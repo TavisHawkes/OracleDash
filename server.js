@@ -200,7 +200,135 @@ async function fetchM365Status() {
   } catch { return { services: {} }; }
 }
 
-async function fetchOCIRSS() {
+async function fetchGCPStatus() {
+  try {
+    const result = await fetchJSON('https://status.cloud.google.com/incidents.json');
+    const services = {};
+    const incidents = Array.isArray(result) ? result.slice(0, 5) : [];
+    for (const inc of incidents) {
+      const desc = (inc.external_desc || inc.summary || '').toLowerCase();
+      let st = 'operational';
+      if (desc.includes('outage') || desc.includes('major')) st = 'major_outage';
+      else if (desc.includes('degraded') || desc.includes('disruption')) st = 'degraded';
+      else if (desc.includes('issue') || desc.includes('impact')) st = 'possible_issues';
+      const components = (inc.affected_products || []).map(p => p.product_name || p).join(', ') || 'GCP';
+      services[`gcp_${inc.incident_id || 'unknown'}`] = { name: `GCP: ${components}`, status: st, provider: 'Google Cloud', description: inc.external_desc?.substring(0, 200) || '' };
+    }
+    return { services };
+  } catch { return { services: {} }; }
+}
+
+async function fetchDigitalOceanStatus() {
+  try {
+    const result = await fetchJSON('https://status.digitalocean.com/api/v2/summary.json');
+    const services = {};
+    for (const c of (result.components || [])) {
+      let st = 'operational';
+      if (c.status === 'major_outage') st = 'major_outage';
+      else if (c.status === 'partial_outage' || c.status === 'degraded_performance') st = 'degraded';
+      else if (c.status === 'under_maintenance') st = 'informational';
+      services[`do_${c.name}`] = { name: `DO: ${c.name}`, status: st, provider: 'DigitalOcean' };
+    }
+    return { services, status: result.status?.indicator || 'none' };
+  } catch { return { services: {} }; }
+}
+
+async function fetchFastlyStatus() {
+  try {
+    const result = await fetchJSON('https://status.fastly.com/api/v2/summary.json');
+    const services = {};
+    for (const c of (result.components || [])) {
+      let st = 'operational';
+      if (c.status === 'major_outage') st = 'major_outage';
+      else if (c.status === 'partial_outage' || c.status === 'degraded_performance') st = 'degraded';
+      else if (c.status === 'under_maintenance') st = 'informational';
+      services[`fastly_${c.name}`] = { name: `Fastly: ${c.name}`, status: st, provider: 'Fastly' };
+    }
+    return { services, status: result.status?.indicator || 'none' };
+  } catch { return { services: {} }; }
+}
+
+async function fetchAkamaiStatus() {
+  try {
+    const result = await fetchJSON('https://www.akamai.com/status-detailed.json');
+    const services = {};
+    if (result?.n?.status) {
+      let st = 'operational';
+      const s = result.n.status.toLowerCase();
+      if (s.includes('outage') || s.includes('major')) st = 'major_outage';
+      else if (s.includes('degraded') || s.includes('issue')) st = 'degraded';
+      services['akamai_core'] = { name: 'Akamai Core CDN', status: st, provider: 'Akamai', description: result.n.status };
+    }
+    return { services };
+  } catch { return { services: {} }; }
+}
+
+async function fetchVeeamStatus() {
+  try {
+    const html = await fetchText('https://status.veeam.com/');
+    const services = {};
+    const hasIssues = html.includes('degraded') || html.includes('outage') || html.includes('incident');
+    services['veeam_cloud'] = { name: 'Veeam Cloud Connect', status: hasIssues ? 'degraded' : 'operational', provider: 'Veeam' };
+    return { services };
+  } catch { return { services: {} }; }
+}
+
+async function fetchConnectWiseStatus() {
+  try {
+    const result = await fetchJSON('https://status.connectwise.com/api/v2/summary.json');
+    const services = {};
+    for (const c of (result.components || [])) {
+      let st = 'operational';
+      if (c.status === 'major_outage') st = 'major_outage';
+      else if (c.status === 'partial_outage' || c.status === 'degraded_performance') st = 'degraded';
+      else if (c.status === 'under_maintenance') st = 'informational';
+      services[`cw_${c.name}`] = { name: `ConnectWise: ${c.name}`, status: st, provider: 'ConnectWise' };
+    }
+    return { services, status: result.status?.indicator || 'none' };
+  } catch { return { services: {} }; }
+}
+
+async function fetchKaseyaStatus() {
+  try {
+    const result = await fetchJSON('https://status.kaseya.com/api/v2/summary.json');
+    const services = {};
+    for (const c of (result.components || [])) {
+      let st = 'operational';
+      if (c.status === 'major_outage') st = 'major_outage';
+      else if (c.status === 'partial_outage' || c.status === 'degraded_performance') st = 'degraded';
+      else if (c.status === 'under_maintenance') st = 'informational';
+      services[`kaseya_${c.name}`] = { name: `Kaseya: ${c.name}`, status: st, provider: 'Kaseya' };
+    }
+    return { services, status: result.status?.indicator || 'none' };
+  } catch { return { services: {} }; }
+}
+
+async function fetchDattoStatus() {
+  try {
+    const result = await fetchJSON('https://status.datto.com/api/v2/summary.json');
+    const services = {};
+    for (const c of (result.components || [])) {
+      let st = 'operational';
+      if (c.status === 'major_outage') st = 'major_outage';
+      else if (c.status === 'partial_outage' || c.status === 'degraded_performance') st = 'degraded';
+      else if (c.status === 'under_maintenance') st = 'informational';
+      services[`datto_${c.name}`] = { name: `Datto: ${c.name}`, status: st, provider: 'Datto' };
+    }
+    return { services, status: result.status?.indicator || 'none' };
+  } catch { return { services: {} }; }
+}
+
+async function fetchAgilysysStatus() {
+  try {
+    const html = await fetchText('https://www.agilysys.com/status');
+    const services = {};
+    const hasIssues = html.includes('degraded') || html.includes('outage');
+    services['agilysys_cloud'] = { name: 'Agilysys Cloud', status: hasIssues ? 'degraded' : 'operational', provider: 'Agilysys' };
+    return { services };
+  } catch { return { services: {} }; }
+}
+
+async function fetchOracleRSS() {
   try {
     const result = await fetchXML('https://ocistatus.oraclecloud.com/api/v2/incident-summary.rss');
     const items = result?.rss?.channel?.[0]?.item || [];
@@ -216,16 +344,52 @@ async function fetchOCIRSS() {
 
 async function fetchDownDetectorServices() {
   const services = [
+    // Cloud & Infrastructure
     { name: 'Oracle Cloud', slug: 'oracle-cloud', geoIds: ['oc-us-ashburn', 'oc-eu-frankfurt', 'oc-ap-tokyo'] },
-    { name: 'Oracle Hospitality/Opera', slug: 'oracle-hospitality', geoIds: ['h-marriott', 'h-hilton', 'h-ihg'] },
+    { name: 'Oracle Hospitality/Opera', slug: 'oracle-hospitality', geoIds: ['pms-opera', 'pms-opera-emea', 'pms-opera-apac'] },
     { name: 'AWS', slug: 'amazon-web-services-aws', geoIds: ['aws-va', 'aws-or', 'aws-ie'] },
     { name: 'Azure', slug: 'microsoft-azure', geoIds: ['az-va', 'az-nl', 'az-uk'] },
+    { name: 'Google Cloud', slug: 'google-cloud-platform', geoIds: ['gcp-us-va', 'gcp-eu-nl'] },
     { name: 'Cloudflare', slug: 'cloudflare', geoIds: ['cf-nyc', 'cf-lon', 'cf-tok'] },
     { name: 'Microsoft 365', slug: 'microsoft-office-365', geoIds: ['az-va'] },
+    { name: 'Microsoft Teams', slug: 'microsoft-teams', geoIds: ['col-teams'] },
+    { name: 'DigitalOcean', slug: 'digital-ocean', geoIds: ['host-do'] },
+    // Payment & POS
     { name: 'Visa', slug: 'visa', geoIds: ['visa-us', 'visa-eu'] },
     { name: 'Mastercard', slug: 'mastercard', geoIds: ['mc-us', 'mc-eu'] },
     { name: 'Stripe', slug: 'stripe', geoIds: ['stripe-us'] },
-    { name: 'ServiceNow', slug: 'servicenow', geoIds: ['fin-nyc'] },
+    { name: 'Square', slug: 'square', geoIds: ['pos-square'] },
+    { name: 'Toast', slug: 'toast', geoIds: ['pos-toast', 'pos-toast-us'] },
+    { name: 'Clover', slug: 'clover', geoIds: ['pos-clover'] },
+    { name: 'Worldpay', slug: 'worldpay', geoIds: ['pos-worldpay'] },
+    { name: 'Adyen', slug: 'adyen', geoIds: ['pos-adyen'] },
+    // ITSM & RMM
+    { name: 'ServiceNow', slug: 'servicenow', geoIds: ['itsm-snow-us', 'itsm-snow-uk'] },
+    { name: 'Datto', slug: 'datto', geoIds: ['rmm-datto', 'rmm-datto-uk'] },
+    { name: 'Kaseya', slug: 'kaseya', geoIds: ['rmm-kaseya', 'rmm-kaseya-dub'] },
+    { name: 'ConnectWise', slug: 'connectwise', geoIds: ['rmm-cw'] },
+    { name: 'Jira', slug: 'atlassian-jira', geoIds: ['itsm-jira-au', 'itsm-jira-us'] },
+    { name: 'Freshservice', slug: 'freshservice', geoIds: ['itsm-fresh'] },
+    // PMS & Hospitality
+    { name: 'Agilysys', slug: 'agilysys', geoIds: ['pms-agilysys'] },
+    { name: 'Oracle MICROS', slug: 'oracle-micros', geoIds: ['pos-micros', 'pos-micros-uk'] },
+    { name: 'SiteMinder', slug: 'siteminder', geoIds: ['pms-site-minder'] },
+    { name: 'Lightspeed', slug: 'lightspeed', geoIds: ['pos-lightspeed'] },
+    // Collaboration & Comms
+    { name: 'Zoom', slug: 'zoom', geoIds: ['col-zoom'] },
+    { name: 'Slack', slug: 'slack', geoIds: ['col-slack'] },
+    { name: 'Cisco Webex', slug: 'cisco-webex', geoIds: ['col-webex'] },
+    // Hosting & CDN
+    { name: 'GoDaddy', slug: 'godaddy', geoIds: ['host-godaddy'] },
+    { name: 'Akamai', slug: 'akamai', geoIds: ['cdn-akamai-va', 'cdn-akamai-lon'] },
+    // Backup & DR
+    { name: 'Veeam', slug: 'veeam', geoIds: ['bkp-veeam', 'bkp-veeam-de'] },
+    { name: 'Acronis', slug: 'acronis', geoIds: ['bkp-acronis', 'bkp-acronis-us'] },
+    // Monitoring
+    { name: 'Datadog', slug: 'datadog', geoIds: ['mon-datadog'] },
+    { name: 'PRTG', slug: 'prtg', geoIds: ['mon-prtg'] },
+    // Identity
+    { name: 'Okta', slug: 'okta', geoIds: ['idp-okta', 'idp-okta-uk'] },
   ];
   const results = [];
 
@@ -272,11 +436,28 @@ async function checkEndpoints() {
   const endpoints = [
     { name: 'Oracle OCI Status', url: 'https://ocistatus.oraclecloud.com/api/v2/status.json' },
     { name: 'Oracle Hospitality', url: 'https://www.oracle.com/hospitality/' },
+    { name: 'Oracle MICROS', url: 'https://www.oracle.com/industries/hospitality/restaurant/' },
     { name: 'Azure Status', url: 'https://azure.status.microsoft/' },
     { name: 'AWS Status', url: 'https://health.aws.amazon.com/health/status' },
+    { name: 'Google Cloud', url: 'https://status.cloud.google.com/' },
     { name: 'Cloudflare Status', url: 'https://www.cloudflarestatus.com/api/v2/status.json' },
     { name: 'Microsoft 365', url: 'https://status.cloud.microsoft/' },
+    { name: 'DigitalOcean', url: 'https://status.digitalocean.com/' },
+    { name: 'Fastly', url: 'https://status.fastly.com/' },
+    { name: 'ServiceNow', url: 'https://status.servicenow.com/' },
+    { name: 'Datto', url: 'https://status.datto.com/' },
+    { name: 'Kaseya', url: 'https://status.kaseya.com/' },
+    { name: 'ConnectWise', url: 'https://status.connectwise.com/' },
+    { name: 'Zoom', url: 'https://status.zoom.us/' },
+    { name: 'Slack', url: 'https://status.slack.com/' },
+    { name: 'Okta', url: 'https://status.okta.com/' },
+    { name: 'Veeam', url: 'https://status.veeam.com/' },
+    { name: 'Toast POS', url: 'https://status.toasttab.com/' },
+    { name: 'Agilysys', url: 'https://www.agilysys.com/status' },
+    { name: 'SiteMinder', url: 'https://www.siteminder.com/status/' },
+    { name: 'GoDaddy', url: 'https://www.godaddy.com/system-status' },
     { name: 'DownDetector Oracle', url: 'https://downdetector.com/status/oracle-cloud/' },
+    { name: 'Datadog', url: 'https://status.datadoghq.com/' },
   ];
   const results = [];
   for (const ep of endpoints) {
@@ -310,14 +491,42 @@ function buildGeoData(services, downdetector, changes) {
       for (const loc of GEO.oci) {
         if (region.includes(loc.name.split('(')[1]?.toLowerCase() || '\u0000')) geoLocations.push(loc);
       }
-      // Generic OCI service issues show all regions
       if (geoLocations.length === 0) geoLocations = GEO.oci.slice(0, 5);
     }
-    // Provider-specific mapping
+    // Cloud providers
     else if (svcKey.startsWith('aws_'))  geoLocations = GEO.aws;
     else if (svcKey.startsWith('azure_')) geoLocations = GEO.azure;
     else if (svcKey.startsWith('cf_'))   geoLocations = GEO.cloudflare;
-    else if (svcKey.startsWith('m365_')) geoLocations = GEO.azure; // M365 runs on Azure
+    else if (svcKey.startsWith('m365_')) geoLocations = GEO.azure;
+    else if (svcKey.startsWith('gcp_'))  geoLocations = GEO.gcp;
+    else if (svcKey.startsWith('do_'))   geoLocations = GEO.hosting.filter(l => l.id === 'host-do');
+    else if (svcKey.startsWith('fastly_')) geoLocations = GEO.cdn.filter(l => l.provider === 'Fastly');
+    else if (svcKey.startsWith('akamai_')) geoLocations = GEO.cdn.filter(l => l.provider === 'Akamai');
+    // ITSM & RMM
+    else if (svcKey.startsWith('cw_'))   geoLocations = GEO.rmm.filter(l => l.id === 'rmm-cw');
+    else if (svcKey.startsWith('kaseya_')) geoLocations = GEO.rmm.filter(l => l.id.startsWith('rmm-kaseya'));
+    else if (svcKey.startsWith('datto_')) geoLocations = GEO.rmm.filter(l => l.id.startsWith('rmm-datto')).concat(GEO.backup.filter(l => l.id.startsWith('bkp-datto')));
+    else if (svcKey.startsWith('servicenow') || svcKey.includes('ServiceNow')) geoLocations = GEO.itsm.filter(l => l.id.startsWith('itsm-snow'));
+    // Hospitality PMS & POS
+    else if (svcKey.startsWith('pms_') || svcKey.includes('Opera')) geoLocations = GEO.pms.filter(l => l.id.startsWith('pms-opera'));
+    else if (svcKey.includes('MICROS') || svcKey.includes('micros')) geoLocations = GEO.pos.filter(l => l.id.startsWith('pos-micros'));
+    else if (svcKey.includes('Agilysys') || svcKey.includes('agilysys')) geoLocations = GEO.pms.filter(l => l.id === 'pms-agilysys');
+    else if (svcKey.includes('Toast') || svcKey.includes('toast')) geoLocations = GEO.pos.filter(l => l.id.startsWith('pos-toast'));
+    // Collaboration
+    else if (svcKey.includes('Zoom') || svcKey.includes('zoom')) geoLocations = GEO.collaboration.filter(l => l.id === 'col-zoom');
+    else if (svcKey.includes('Slack') || svcKey.includes('slack')) geoLocations = GEO.collaboration.filter(l => l.id === 'col-slack');
+    // Backup
+    else if (svcKey.startsWith('veeam') || svcKey.includes('Veeam')) geoLocations = GEO.backup.filter(l => l.id.startsWith('bkp-veeam'));
+    // Payment
+    else if (svcKey.includes('Visa') || svcKey.includes('visa')) geoLocations = GEO.payment.filter(l => l.id.startsWith('visa'));
+    else if (svcKey.includes('Mastercard') || svcKey.includes('mastercard')) geoLocations = GEO.payment.filter(l => l.id.startsWith('mc'));
+    else if (svcKey.includes('Stripe') || svcKey.includes('stripe')) geoLocations = GEO.payment.filter(l => l.id === 'stripe-us');
+    else if (svcKey.includes('Square') || svcKey.includes('square')) geoLocations = GEO.pos.filter(l => l.id === 'pos-square');
+    else if (svcKey.includes('Clover') || svcKey.includes('clover')) geoLocations = GEO.pos.filter(l => l.id === 'pos-clover');
+    else if (svcKey.includes('Worldpay') || svcKey.includes('worldpay')) geoLocations = GEO.pos.filter(l => l.id === 'pos-worldpay');
+    else if (svcKey.includes('Adyen') || svcKey.includes('adyen')) geoLocations = GEO.pos.filter(l => l.id === 'pos-adyen');
+    else if (svcKey.includes('Okta') || svcKey.includes('okta')) geoLocations = GEO.idp.filter(l => l.id.startsWith('idp-okta'));
+    else if (svcKey.includes('Datadog') || svcKey.includes('datadog')) geoLocations = GEO.monitoring.filter(l => l.id === 'mon-datadog');
 
     for (const loc of geoLocations) {
       points.push({
@@ -399,12 +608,17 @@ async function refreshAllData() {
     const previousState = loadPreviousState();
     const newState = {};
 
-    const [oci, azure, cloudflare, aws, m365, incidents, dd, rss, endpoints] = await Promise.all([
+    const [oci, azure, cloudflare, aws, m365, gcp, doStatus, fastly, akamai, veeam, cw, kaseya, datto, agilysys,
+           incidents, dd, rss, endpoints] = await Promise.all([
       fetchOCI(), fetchAzureStatus(), fetchCloudflareStatus(), fetchAWSStatus(), fetchM365Status(),
+      fetchGCPStatus(), fetchDigitalOceanStatus(), fetchFastlyStatus(), fetchAkamaiStatus(),
+      fetchVeeamStatus(), fetchConnectWiseStatus(), fetchKaseyaStatus(), fetchDattoStatus(), fetchAgilysysStatus(),
       fetchOCIRSS(), fetchDownDetectorServices(), fetchOracleRSS(), checkEndpoints()
     ]);
 
-    Object.assign(newState, oci.services, azure.services, cloudflare.services, aws.services, m365.services);
+    Object.assign(newState, oci.services, azure.services, cloudflare.services, aws.services, m365.services,
+      gcp.services, doStatus.services, fastly.services, akamai.services,
+      veeam.services, cw.services, kaseya.services, datto.services, agilysys.services);
     for (const d of dd) { newState[`dd_${d.name}`] = { name: d.name, status: d.status, provider: 'DownDetector' }; }
 
     const changes = detectChanges(previousState, newState);
@@ -420,6 +634,15 @@ async function refreshAllData() {
         cloudflare: { status: cloudflare.status || 'unknown' },
         aws: { status: aws.services && Object.keys(aws.services).length ? 'checked' : 'unknown' },
         m365: { status: m365.services && Object.keys(m365.services).length ? 'checked' : 'unknown' },
+        gcp: { status: gcp.services && Object.keys(gcp.services).length ? 'checked' : 'unknown' },
+        digitalocean: { status: doStatus.services && Object.keys(doStatus.services).length ? 'checked' : 'unknown' },
+        fastly: { status: fastly.services && Object.keys(fastly.services).length ? 'checked' : 'unknown' },
+        akamai: { status: akamai.services && Object.keys(akamai.services).length ? 'checked' : 'unknown' },
+        veeam: { status: veeam.services && Object.keys(veeam.services).length ? 'checked' : 'unknown' },
+        connectwise: { status: cw.services && Object.keys(cw.services).length ? 'checked' : 'unknown' },
+        kaseya: { status: kaseya.services && Object.keys(kaseya.services).length ? 'checked' : 'unknown' },
+        datto: { status: datto.services && Object.keys(datto.services).length ? 'checked' : 'unknown' },
+        agilysys: { status: agilysys.services && Object.keys(agilysys.services).length ? 'checked' : 'unknown' },
       },
       incidents,
       downdetector: dd,

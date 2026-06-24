@@ -99,6 +99,11 @@
     .globe-btn{background:rgba(10,14,26,.88);border:1px solid var(--bdr);color:var(--t1);padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;transition:.2s}
     .globe-btn:hover{border-color:var(--blue);background:var(--card2)}
     .globe-btn.active{border-color:var(--cyan);color:var(--cyan)}
+    .globe-filters{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:10;display:flex;gap:4px;flex-wrap:wrap;justify-content:center;max-width:80%}
+    .globe-filter{background:rgba(10,14,26,.88);border:1px solid var(--bdr);color:var(--t3);padding:3px 8px;border-radius:12px;cursor:pointer;font-size:10px;transition:.2s;white-space:nowrap}
+    .globe-filter.on{border-color:var(--cyan);color:var(--cyan);background:rgba(6,182,212,.1)}
+    .globe-filter:hover{border-color:var(--blue)}
+    .globe-stats{position:absolute;bottom:12px;right:12px;z-index:10;background:rgba(10,14,26,.88);border:1px solid var(--bdr);border-radius:8px;padding:8px 12px;font-size:11px;color:var(--t2)}
   </style>
 </head>
 <body>
@@ -180,12 +185,26 @@
               <div class="globe-legend-item"><div class="globe-legend-dot" style="background:#446688"></div>Infrastructure</div>
             </div>
           </div>
+          <div class="globe-filters" id="globeFilters">
+            <div class="globe-filter on" data-cat="all" onclick="toggleGlobeFilter(this)">All</div>
+            <div class="globe-filter on" data-cat="cloud" onclick="toggleGlobeFilter(this)">Cloud</div>
+            <div class="globe-filter on" data-cat="itsm" onclick="toggleGlobeFilter(this)">ITSM/RMM</div>
+            <div class="globe-filter on" data-cat="hospitality" onclick="toggleGlobeFilter(this)">Hospitality</div>
+            <div class="globe-filter on" data-cat="payment" onclick="toggleGlobeFilter(this)">Payment/POS</div>
+            <div class="globe-filter on" data-cat="collab" onclick="toggleGlobeFilter(this)">Collaboration</div>
+            <div class="globe-filter on" data-cat="backup" onclick="toggleGlobeFilter(this)">Backup/DR</div>
+            <div class="globe-filter on" data-cat="cdn" onclick="toggleGlobeFilter(this)">CDN/DNS</div>
+            <div class="globe-filter on" data-cat="idp" onclick="toggleGlobeFilter(this)">Identity</div>
+            <div class="globe-filter on" data-cat="monitoring" onclick="toggleGlobeFilter(this)">Monitoring</div>
+            <div class="globe-filter on" data-cat="hosting" onclick="toggleGlobeFilter(this)">Hosting</div>
+          </div>
           <div class="globe-controls">
             <button class="globe-btn active" id="btnAutoFly" onclick="toggleAutoFly()">Auto-Fly: ON</button>
             <button class="globe-btn" onclick="resetGlobeView()">Reset View</button>
             <button class="globe-btn" onclick="flyToIssues()">Fly to Issues</button>
           </div>
           <div class="globe-info" id="globeInfo"></div>
+          <div class="globe-stats" id="globeStats"></div>
         </div>
       </div>
     </div>
@@ -397,6 +416,64 @@
     let autoFly = true;
     let lastGeoHash = '';
     let globeInited = false;
+    let activeFilters = new Set(['all','cloud','itsm','hospitality','payment','collab','backup','cdn','idp','monitoring','hosting']);
+    let allGeoPoints = [];
+    let allGeoHotspots = [];
+
+    const CAT_MAP = {
+      'Oracle OCI': 'cloud', 'AWS': 'cloud', 'Azure': 'cloud', 'Cloudflare': 'cloud', 'Google Cloud': 'cloud',
+      'DigitalOcean': 'hosting', 'Fastly': 'cdn', 'Akamai': 'cdn', 'Imperva': 'cdn',
+      'ServiceNow': 'itsm', 'Atlassian': 'itsm', 'Freshservice': 'itsm', 'BMC': 'itsm', 'Ivanti': 'itsm', 'Cherwell': 'itsm',
+      'Datto': 'itsm', 'Kaseya': 'itsm', 'ConnectWise': 'itsm', 'NinjaRMM': 'itsm', 'Pulseway': 'itsm', 'Atera': 'itsm', 'SuperOps': 'itsm',
+      'VMware': 'itsm', 'Citrix': 'itsm', 'Microsoft RDS': 'itsm', 'VMware Horizon': 'itsm',
+      'Veeam': 'backup', 'Acronis': 'backup', 'Datto BCDR': 'backup', 'Unitrends': 'backup', 'StorageCraft': 'backup', 'Zerto': 'backup',
+      'Toast': 'hospitality', 'Square': 'payment', 'Clover': 'payment', 'Oracle MICROS': 'hospitality',
+      'Adyen': 'payment', 'Worldpay': 'payment', 'Nuvei': 'payment', 'Revel Systems': 'payment', 'Lightspeed': 'payment', 'Elo Pay': 'payment',
+      'Oracle Opera PMS': 'hospitality', 'Agilysys': 'hospitality', 'Mews': 'hospitality', 'Cloudbeds': 'hospitality',
+      'RoomKeyPMS': 'hospitality', 'Hotelogix': 'hospitality', 'Protel': 'hospitality', 'Clock PMS+': 'hospitality', 'SiteMinder': 'hospitality',
+      'Visa': 'payment', 'Mastercard': 'payment', 'Stripe': 'payment', 'Amex': 'payment',
+      'Okta': 'idp', 'Azure AD': 'idp', 'Ping Identity': 'idp', 'Auth0': 'idp', 'Forgerock': 'idp',
+      'Zoom': 'collab', 'Slack': 'collab', 'Microsoft Teams': 'collab', 'Cisco Webex': 'collab', 'Google Meet': 'collab',
+      'Datadog': 'monitoring', 'PRTG': 'monitoring', 'SolarWinds': 'monitoring', 'Nagios': 'monitoring',
+      'Zabbix': 'monitoring', 'LogicMonitor': 'monitoring', 'UptimeRobot': 'monitoring',
+      'GoDaddy': 'hosting', 'DigitalOcean': 'hosting', 'Vultr': 'hosting', 'Hetzner': 'hosting',
+      'Linode': 'hosting', 'Rackspace': 'hosting', 'OVH': 'hosting',
+      'SendGrid': 'hosting', 'Mailgun': 'hosting', 'Mailchimp': 'hosting', 'Postmark': 'hosting',
+      'MySQL': 'cloud', 'PostgreSQL': 'cloud', 'Redis': 'cloud', 'MongoDB': 'cloud', 'Elastic': 'cloud', 'Cosmos DB': 'cloud',
+      'Submarine Cable': 'cdn', 'Google DNS': 'cdn', 'Cloudflare DNS': 'cdn', 'Quad9': 'cdn',
+      'Comcast': 'hosting', 'AT&T': 'hosting', 'Verizon': 'hosting', 'BT': 'hosting',
+      'Deutsche Telekom': 'hosting', 'NTT': 'hosting', 'Telstra': 'hosting', 'Jio': 'hosting', 'Vodafone': 'hosting',
+    };
+
+    function getCat(provider) {
+      return CAT_MAP[provider] || 'cloud';
+    }
+
+    function toggleGlobeFilter(el) {
+      const cat = el.dataset.cat;
+      if (cat === 'all') {
+        const allOn = activeFilters.size === 11;
+        if (allOn) { activeFilters.clear(); document.querySelectorAll('.globe-filter').forEach(f => f.classList.remove('on')); }
+        else { activeFilters = new Set(['all','cloud','itsm','hospitality','payment','collab','backup','cdn','idp','monitoring','hosting']); document.querySelectorAll('.globe-filter').forEach(f => f.classList.add('on')); }
+      } else {
+        activeFilters.has(cat) ? activeFilters.delete(cat) : activeFilters.add(cat);
+        el.classList.toggle('on', activeFilters.has(cat));
+        document.querySelector('.globe-filter[data-cat="all"]').classList.toggle('on', activeFilters.size === 11);
+      }
+      applyGlobeFilters();
+    }
+
+    function applyGlobeFilters() {
+      if (!globe) return;
+      const pts = allGeoPoints.filter(p => {
+        if (p.weight > 0) return true;
+        return activeFilters.has(getCat(p.provider || ''));
+      });
+      const hotspots = allGeoHotspots.filter(h => true);
+      globe.pointsData(pts);
+      const issueCount = pts.filter(p => p.weight > 0).length;
+      document.getElementById('globeStats').innerHTML = `${pts.length} locations &bull; ${issueCount} issues`;
+    }
 
     function initGlobe() {
       if (globeInited) return;
@@ -409,24 +486,23 @@
         .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
         .atmosphereColor('#3b82f6')
         .atmosphereAltitude(0.25)
-        // Points (outages/issues)
         .pointsData([])
         .pointAltitude(d => d.weight > 0 ? 0.06 + d.weight * 0.02 : 0.01)
         .pointRadius(d => d.weight > 0 ? 0.4 + d.weight * 0.15 : 0.15)
         .pointColor(d => d.color || '#446688')
         .pointLabel(d => `<div style="background:rgba(10,14,26,.92);padding:8px 12px;border-radius:6px;border:1px solid #2a3454;font-size:12px;max-width:280px">
           <div style="font-weight:600;margin-bottom:2px">${d.label || 'Unknown'}</div>
-          ${d.weight > 0 ? '<div style="color:#ff8800">Severity: ' + d.weight + '/5</div>' : '<div style="color:#446688">Normal</div>'}
+          <div style="color:var(--t3);font-size:10px">${d.provider || ''}</div>
+          ${d.weight > 0 ? '<div style="color:#ff8800;margin-top:2px">Severity: ' + d.weight + '/5</div>' : '<div style="color:#446688;margin-top:2px">Normal</div>'}
         </div>`)
         .onPointClick(d => {
           if (d.lat && d.lng) {
             globe.pointOfView({ lat: d.lat, lng: d.lng, altitude: 0.4 }, 1000);
             const info = document.getElementById('globeInfo');
             info.className = 'globe-info show';
-            info.innerHTML = `<strong>${d.label || 'Unknown'}</strong><br><span style="color:var(--t3)">${d.weight > 0 ? 'Severity: ' + d.weight + '/5' : 'Operational'}</span>`;
+            info.innerHTML = `<strong>${d.label || 'Unknown'}</strong><br><span style="color:var(--t3)">${d.provider || ''} &bull; ${d.weight > 0 ? 'Severity: ' + d.weight + '/5' : 'Operational'}</span>`;
           }
         })
-        // Rings (active outage hotspots)
         .ringsData([])
         .ringColor(d => d.color || 'rgba(255,0,64,0.35)')
         .ringMaxRadius(d => d.radius || 5)
@@ -436,7 +512,6 @@
           <div style="font-weight:600;margin-bottom:2px">${d.label || 'Unknown'}</div>
           <div style="color:#ff0040">Hotspot: ${d.weight || 1}/4</div>
         </div>`)
-        // Arcs (connections)
         .arcsData([])
         .arcColor(() => 'rgba(6,182,212,0.3)')
         .arcDashLength(0.4)
@@ -453,33 +528,34 @@
       if (!globe || !statusCache.geo) return;
       const geo = statusCache.geo;
 
-      // Create a hash of the data to avoid unnecessary updates
       const hash = JSON.stringify(geo.points?.length) + JSON.stringify(geo.hotspots?.length);
       if (hash === lastGeoHash) return;
       lastGeoHash = hash;
 
-      globe.pointsData(geo.points || []);
-      globe.ringsData(geo.hotspots || []);
+      allGeoPoints = geo.points || [];
+      allGeoHotspots = geo.hotspots || [];
 
-      // Build arcs between related outage points (same provider)
+      applyGlobeFilters();
+
+      globe.ringsData(allGeoHotspots);
+
       const arcs = [];
       const providerGroups = {};
-      for (const p of (geo.points || [])) {
+      for (const p of allGeoPoints) {
         if (p.weight < 2) continue;
-        const prov = p.provider || 'unknown';
-        if (!providerGroups[prov]) providerGroups[prov] = [];
-        providerGroups[prov].push(p);
+        const cat = getCat(p.provider || '');
+        if (!providerGroups[cat]) providerGroups[cat] = [];
+        providerGroups[cat].push(p);
       }
-      for (const [prov, pts] of Object.entries(providerGroups)) {
+      for (const [cat, pts] of Object.entries(providerGroups)) {
         for (let i = 0; i < pts.length - 1; i++) {
           arcs.push({ startLat: pts[i].lat, startLng: pts[i].lng, endLat: pts[i+1].lat, endLng: pts[i+1].lng });
         }
       }
       globe.arcsData(arcs);
 
-      // Auto-fly to newest issue if enabled
-      if (autoFly && geo.points) {
-        const issuePoint = geo.points.find(p => p.weight >= 3 && p.isChange);
+      if (autoFly && allGeoPoints) {
+        const issuePoint = allGeoPoints.find(p => p.weight >= 3 && p.isChange);
         if (issuePoint) {
           globe.pointOfView({ lat: issuePoint.lat, lng: issuePoint.lng, altitude: 0.5 }, 2000);
         }
@@ -499,18 +575,17 @@
     }
 
     function flyToIssues() {
-      if (!globe || !statusCache.geo) return;
-      const issues = (statusCache.geo.points || []).filter(p => p.weight >= 2);
+      if (!globe) return;
+      const issues = allGeoPoints.filter(p => p.weight >= 2);
       if (issues.length > 0) {
         const worst = issues.sort((a,b) => b.weight - a.weight)[0];
         globe.pointOfView({ lat: worst.lat, lng: worst.lng, altitude: 0.4 }, 2000);
         const info = document.getElementById('globeInfo');
         info.className = 'globe-info show';
-        info.innerHTML = `<strong>${worst.label || 'Issue'}</strong> — Severity ${worst.weight}/5`;
+        info.innerHTML = `<strong>${worst.label || 'Issue'}</strong> — Severity ${worst.weight}/5<br><span style="color:var(--t3)">${worst.provider || ''}</span>`;
       }
     }
 
-    // Init globe when tab is first shown
     const origShowTab = showTab;
     showTab = function(el, name) {
       origShowTab(el, name);
@@ -525,7 +600,6 @@
       }
     };
 
-    // Update globe when data refreshes
     const origRender = render;
     render = function(data) {
       origRender(data);
