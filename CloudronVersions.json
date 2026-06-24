@@ -9,6 +9,8 @@
         "author": "TavisHawkes",
         "description": "Monitor Oracle Cloud Infrastructure status, detect outages, and view RSS feeds",
         "tagline": "Real-time OCI monitoring with RSS feeds and outage alerts",
+        "changelog": "Initial release",
+        "minBoxVersion": "7.0.0",
         "version": "1.0.0",
         "healthCheckPath": "/api/health",
         "httpPort": 3000,
@@ -23,7 +25,6 @@
         ],
         "website": "https://github.com/TavisHawkes/OracleDash",
         "dockerImage": "ghcr.io/tavishawkes/oracledash:latest",
-        "iconUrl": "https://raw.githubusercontent.com/TavisHawkes/OracleDash/master/icon.svg",
         "contactEmail": "admin@enjoytech.co.uk"
       },
       "creationDate": "Tue, 24 Jun 2026 12:00:00 GMT",
