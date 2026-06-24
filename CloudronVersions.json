@@ -1,11 +1,34 @@
-[{
-  "version": "1.0.0",
-  "manifestVersion": 2,
-  "id": "com.oracle-status-dashboard",
-  "description": "Monitor Oracle Cloud Infrastructure status, detect outages, and view RSS feeds",
-  "author": "TavisHawkes",
-  "dockerImage": "ghcr.io/tavishawkes/oracledash:latest",
-  "httpPort": 3000,
-  "healthCheckPath": "/api/health",
-  "addons": {}
-}]
+{
+  "stable": true,
+  "versions": {
+    "1.0.0": {
+      "manifest": {
+        "manifestVersion": 2,
+        "id": "com.tavishawkes.oracle-status-dashboard",
+        "title": "Oracle Status Dashboard",
+        "author": "TavisHawkes",
+        "description": "Monitor Oracle Cloud Infrastructure status, detect outages, and view RSS feeds",
+        "tagline": "Real-time OCI monitoring with RSS feeds and outage alerts",
+        "version": "1.0.0",
+        "healthCheckPath": "/api/health",
+        "httpPort": 3000,
+        "addons": {
+          "localstorage": {}
+        },
+        "tags": [
+          "oracle",
+          "monitoring",
+          "status",
+          "cloud"
+        ],
+        "website": "https://github.com/TavisHawkes/OracleDash",
+        "dockerImage": "ghcr.io/tavishawkes/oracledash:latest",
+        "iconUrl": "https://raw.githubusercontent.com/TavisHawkes/OracleDash/master/icon.svg",
+        "contactEmail": "admin@enjoytech.co.uk"
+      },
+      "creationDate": "Tue, 24 Jun 2026 12:00:00 GMT",
+      "ts": "Tue, 24 Jun 2026 12:00:00 GMT",
+      "publishState": "published"
+    }
+  }
+}

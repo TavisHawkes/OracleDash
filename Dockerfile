@@ -1,26 +1,13 @@
-# syntax=docker/dockerfile:1.7
-FROM node:18-alpine
+FROM cloudron/base:4.0.0
 
-# Create app directory
-WORKDIR /app
+RUN mkdir -p /app/code
+WORKDIR /app/code
 
-# Copy package files first for layer caching
-COPY package.json package-lock.json* ./
-
-# Install dependencies
+COPY package.json ./
 RUN npm install --production
 
-# Copy application code
 COPY . .
-
-# Create required directories for Cloudron
-RUN mkdir -p /app/data /tmp
-
-# Set environment
-ENV NODE_ENV=production
 
 EXPOSE 3000
 
-USER node
-
-CMD ["node", "server.js"]
+CMD ["/usr/local/bin/node", "/app/code/server.js"]
