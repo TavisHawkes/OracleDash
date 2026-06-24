@@ -248,10 +248,10 @@
     function showNotif(msg, severity) {
       const bar = document.getElementById('notifBar');
       document.getElementById('notifMsg').textContent = msg;
-      bar.className = `notif-bar show ${severity === 'critical' || severity === 'new_issue' ? 'critical' : 'warn'}`;
+      bar.className = 'notif-bar show ' + (severity === 'critical' || severity === 'new_issue' ? 'critical' : 'warn');
       playAlert(severity);
-      if (Notification.permission === 'granted') {
-        new Notification('Infrastructure Dashboard', { body: msg, icon: '/favicon.ico' });
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try { new Notification('Infrastructure Dashboard', { body: msg }); } catch {}
       }
     }
 
@@ -262,6 +262,9 @@
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       el.classList.add('active');
       document.getElementById('tab-' + name).classList.add('active');
+      if (name === 'globe') {
+        setTimeout(function() { initGlobe(); }, 100);
+      }
     }
 
     function badgeClass(status) {
@@ -274,25 +277,25 @@
     }
 
     function statusLabel(s) {
-      return (s || 'unknown').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      return (s || 'unknown').replace(/_/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
     }
 
     function render(data) {
       if (!data) return;
       clientStatus = data;
-      const services = data.services || {};
-      const changes = data.changes || [];
-      const dd = data.downdetector || [];
-      const incidents = data.incidents || [];
-      const rss = data.rss || [];
-      const endpoints = data.endpoints || [];
-      const providers = data.providers || {};
+      var services = data.services || {};
+      var changes = data.changes || [];
+      var dd = data.downdetector || [];
+      var incidents = data.incidents || [];
+      var rss = data.rss || [];
+      var endpoints = data.endpoints || [];
+      var providers = data.providers || {};
 
       // Overall status
-      const overallEl = document.getElementById('overallStatus');
-      let hasDown = false, hasWarn = false;
-      for (const s of Object.values(services)) {
-        const st = (s.status || '').toLowerCase();
+      var overallEl = document.getElementById('overallStatus');
+      var hasDown = false, hasWarn = false;
+      for (var k in services) {
+        var st = (services[k].status || '').toLowerCase();
         if (['major_outage','down','issues','critical','unreachable'].includes(st)) hasDown = true;
         else if (['degraded','degraded_performance','possible_issues','informational'].includes(st)) hasWarn = true;
       }
@@ -301,128 +304,119 @@
       else { overallEl.className = 'overall-status s-ok'; overallEl.innerHTML = '<div class="dot"></div><span>All Systems Operational</span>'; }
 
       // Metrics
-      const total = Object.keys(services).length;
-      const ok = Object.values(services).filter(s => ['operational','good','resolved','reachable'].includes((s.status||'').toLowerCase())).length;
-      const down = Object.values(services).filter(s => ['major_outage','down','issues','critical','unreachable'].includes((s.status||'').toLowerCase())).length;
-      const ddReports = dd.reduce((sum, d) => sum + (d.reports || 0), 0);
-      document.getElementById('metrics').innerHTML = `
-        <div class="metric"><div class="metric-label">Total Services</div><div class="metric-val">${total}</div><div class="metric-sub">Across all providers</div></div>
-        <div class="metric"><div class="metric-label">Operational</div><div class="metric-val" style="color:var(--green)">${ok}</div><div class="metric-sub">Services healthy</div></div>
-        <div class="metric"><div class="metric-label">Issues</div><div class="metric-val" style="color:var(--red)">${down}</div><div class="metric-sub">Degraded or down</div></div>
-        <div class="metric"><div class="metric-label">DD Reports</div><div class="metric-val" style="color:var(--purple)">${ddReports}</div><div class="metric-sub">User reports (24h)</div></div>
-        <div class="metric"><div class="metric-label">Providers</div><div class="metric-val" style="color:var(--cyan)">${Object.keys(providers).length}</div><div class="metric-sub">Monitored</div></div>
-        <div class="metric"><div class="metric-label">Changes</div><div class="metric-val" style="color:var(--orange)">${changes.length}</div><div class="metric-sub">Last detection cycle</div></div>`;
+      var total = Object.keys(services).length;
+      var ok = Object.values(services).filter(function(s) { return ['operational','good','resolved','reachable'].includes((s.status||'').toLowerCase()); }).length;
+      var down = Object.values(services).filter(function(s) { return ['major_outage','down','issues','critical','unreachable'].includes((s.status||'').toLowerCase()); }).length;
+      var ddReports = dd.reduce(function(sum, d) { return sum + (d.reports || 0); }, 0);
+      document.getElementById('metrics').innerHTML =
+        '<div class="metric"><div class="metric-label">Total Services</div><div class="metric-val">' + total + '</div><div class="metric-sub">Across all providers</div></div>' +
+        '<div class="metric"><div class="metric-label">Operational</div><div class="metric-val" style="color:var(--green)">' + ok + '</div><div class="metric-sub">Services healthy</div></div>' +
+        '<div class="metric"><div class="metric-label">Issues</div><div class="metric-val" style="color:var(--red)">' + down + '</div><div class="metric-sub">Degraded or down</div></div>' +
+        '<div class="metric"><div class="metric-label">DD Reports</div><div class="metric-val" style="color:var(--purple)">' + ddReports + '</div><div class="metric-sub">User reports (24h)</div></div>' +
+        '<div class="metric"><div class="metric-label">Providers</div><div class="metric-val" style="color:var(--cyan)">' + Object.keys(providers).length + '</div><div class="metric-sub">Monitored</div></div>' +
+        '<div class="metric"><div class="metric-label">Changes</div><div class="metric-val" style="color:var(--orange)">' + changes.length + '</div><div class="metric-sub">Last detection cycle</div></div>';
 
       // Services list
-      const svcHtml = Object.values(services).sort((a,b) => {
-        const order = {'major_outage':0,'down':0,'issues':0,'critical':0,'degraded':1,'possible_issues':1,'degraded_performance':1,'informational':2,'operational':3,'good':3,'unknown':4};
-        return (order[(a.status||'').toLowerCase()]||4) - (order[(b.status||'').toLowerCase()]||4);
-      }).map(s => `
-        <div class="svc-row">
-          <div class="svc-name">${s.name || 'Unknown'}</div>
-          <div class="svc-provider">${s.provider || ''}</div>
-          <div class="badge ${badgeClass(s.status)}">${statusLabel(s.status)}</div>
-        </div>`).join('');
+      var order = {'major_outage':0,'down':0,'issues':0,'critical':0,'degraded':1,'possible_issues':1,'degraded_performance':1,'informational':2,'operational':3,'good':3,'unknown':4};
+      var svcHtml = Object.values(services).sort(function(a,b) { return (order[(a.status||'').toLowerCase()]||4) - (order[(b.status||'').toLowerCase()]||4); }).map(function(s) {
+        return '<div class="svc-row"><div class="svc-name">' + (s.name || 'Unknown') + '</div><div class="svc-provider">' + (s.provider || '') + '</div><div class="badge ' + badgeClass(s.status) + '">' + statusLabel(s.status) + '</div></div>';
+      }).join('');
       document.getElementById('svcList').innerHTML = svcHtml || '<div class="loading">No services found</div>';
 
       // Providers
-      const provHtml = Object.entries(providers).map(([k, v]) => `
-        <div class="prov-card">
-          <div class="prov-name">${k.toUpperCase()}</div>
-          <div class="prov-status badge ${badgeClass(v.status)}">${statusLabel(v.status)}</div>
-          ${v.description ? `<div style="font-size:10px;color:var(--t3);margin-top:4px">${v.description}</div>` : ''}
-        </div>`).join('');
+      var provHtml = Object.entries(providers).map(function(e) {
+        var k = e[0], v = e[1];
+        return '<div class="prov-card"><div class="prov-name">' + k.toUpperCase() + '</div><div class="prov-status badge ' + badgeClass(v.status) + '">' + statusLabel(v.status) + '</div>' + (v.description ? '<div style="font-size:10px;color:var(--t3);margin-top:4px">' + v.description + '</div>' : '') + '</div>';
+      }).join('');
       document.getElementById('provGrid').innerHTML = provHtml || '<div class="loading">No provider data</div>';
 
       // Changes
-      const changesHtml = changes.map(c => `
-        <div class="change-item ${c.type}">
-          <div>${c.message}</div>
-          <div class="change-time">${new Date().toLocaleString()}</div>
-        </div>`).join('');
+      var changesHtml = changes.map(function(c) {
+        return '<div class="change-item ' + c.type + '"><div>' + c.message + '</div><div class="change-time">' + new Date().toLocaleString() + '</div></div>';
+      }).join('');
       document.getElementById('changeList').innerHTML = changesHtml || '<div class="loading">No changes detected yet</div>';
       document.getElementById('allChanges').innerHTML = changesHtml || '<div class="loading">No changes detected yet</div>';
 
       // New changes notification
       if (changes.length > lastChangeCount && lastChangeCount > 0) {
-        const newChanges = changes.slice(0, changes.length - lastChangeCount);
-        for (const c of newChanges) showNotif(c.message, c.type);
+        var newChanges = changes.slice(0, changes.length - lastChangeCount);
+        for (var i = 0; i < newChanges.length; i++) showNotif(newChanges[i].message, newChanges[i].type);
       }
       lastChangeCount = changes.length;
 
       // Incidents
-      document.getElementById('incidentList').innerHTML = incidents.length ? incidents.map(i => `
-        <div class="change-item">
-          <div style="font-weight:600">${i.title}</div>
-          <div style="font-size:11px;color:var(--t3);margin:3px 0">${i.pubDate ? new Date(i.pubDate).toLocaleString() : ''} &bull; ${i.source}</div>
-          <div style="font-size:12px;color:var(--t2)">${i.description}</div>
-        </div>`).join('') : '<div class="loading">No active incidents</div>';
+      document.getElementById('incidentList').innerHTML = incidents.length ? incidents.map(function(i) {
+        return '<div class="change-item"><div style="font-weight:600">' + i.title + '</div><div style="font-size:11px;color:var(--t3);margin:3px 0">' + (i.pubDate ? new Date(i.pubDate).toLocaleString() : '') + ' &bull; ' + i.source + '</div><div style="font-size:12px;color:var(--t2)">' + i.description + '</div></div>';
+      }).join('') : '<div class="loading">No active incidents</div>';
 
       // RSS
-      document.getElementById('rssFeed').innerHTML = rss.length ? rss.map(r => `
-        <div class="rss-item">
-          <div class="rss-meta">${r.source} &bull; ${r.pubDate ? new Date(r.pubDate).toLocaleString() : ''}</div>
-          <div class="rss-title">${r.link ? `<a href="${r.link}" target="_blank" rel="noopener">${r.title}</a>` : r.title}</div>
-          <div class="rss-desc">${r.description || ''}</div>
-        </div>`).join('') : '<div class="loading">No RSS items</div>';
+      document.getElementById('rssFeed').innerHTML = rss.length ? rss.map(function(r) {
+        return '<div class="rss-item"><div class="rss-meta">' + r.source + ' &bull; ' + (r.pubDate ? new Date(r.pubDate).toLocaleString() : '') + '</div><div class="rss-title">' + (r.link ? '<a href="' + r.link + '" target="_blank" rel="noopener">' + r.title + '</a>' : r.title) + '</div><div class="rss-desc">' + (r.description || '') + '</div></div>';
+      }).join('') : '<div class="loading">No RSS items</div>';
 
       // DownDetector
-      document.getElementById('ddList').innerHTML = dd.length ? dd.map(d => `
-        <div class="svc-row">
-          <div class="svc-name">${d.name}</div>
-          <div style="font-size:11px;color:var(--t3);margin-right:8px">${d.reports} reports</div>
-          <div class="badge ${badgeClass(d.status)}">${statusLabel(d.status)}</div>
-        </div>`).join('') : '<div class="loading">No DownDetector data</div>';
+      document.getElementById('ddList').innerHTML = dd.length ? dd.map(function(d) {
+        return '<div class="svc-row"><div class="svc-name">' + d.name + '</div><div style="font-size:11px;color:var(--t3);margin-right:8px">' + d.reports + ' reports</div><div class="badge ' + badgeClass(d.status) + '">' + statusLabel(d.status) + '</div></div>';
+      }).join('') : '<div class="loading">No DownDetector data</div>';
 
       // Endpoints
-      document.getElementById('epList').innerHTML = endpoints.length ? endpoints.map(e => `
-        <div class="ep-item">
-          <span>${e.name}</span>
-          <span class="ep-latency">${e.latency ? e.latency + 'ms' : ''}</span>
-          <span class="badge ${badgeClass(e.status)}">${e.status}</span>
-        </div>`).join('') : '<div class="loading">No endpoint data</div>';
+      document.getElementById('epList').innerHTML = endpoints.length ? endpoints.map(function(e) {
+        return '<div class="ep-item"><span>' + e.name + '</span><span class="ep-latency">' + (e.latency ? e.latency + 'ms' : '') + '</span><span class="badge ' + badgeClass(e.status) + '">' + e.status + '</span></div>';
+      }).join('') : '<div class="loading">No endpoint data</div>';
 
       // Ticker
-      const tickerItems = [...rss.slice(0,5), ...incidents.slice(0,5)];
-      const tickerHtml = tickerItems.map(t => {
-        const dotColor = t.source === 'Oracle OCI' ? 'var(--red)' : 'var(--cyan)';
-        return `<div class="ticker-item"><div class="ticker-dot" style="background:${dotColor}"></div>${t.title || t.description || ''}</div>`;
+      var tickerItems = rss.slice(0,5).concat(incidents.slice(0,5));
+      var tickerHtml = tickerItems.map(function(t) {
+        var dotColor = t.source === 'Oracle OCI' ? 'var(--red)' : 'var(--cyan)';
+        return '<div class="ticker-item"><div class="ticker-dot" style="background:' + dotColor + '"></div>' + (t.title || t.description || '') + '</div>';
       }).join('');
       document.getElementById('ticker').innerHTML = tickerHtml + tickerHtml || '<div class="ticker-item">Infrastructure Dashboard - Monitoring all providers</div>';
 
       // Last updated
       if (data.lastUpdated) document.getElementById('lastUpdated').textContent = new Date(data.lastUpdated).toLocaleString();
+
+      // Update globe if visible
+      if (globeInited) updateGlobe();
     }
 
-    async function loadData() {
-      try {
-        const res = await fetch('/api/status');
-        render(await res.json());
-      } catch (e) { console.error('Load failed:', e); }
+    function loadData() {
+      fetch('/api/status').then(function(res) { return res.json(); }).then(function(data) {
+        render(data);
+      }).catch(function(e) { console.error('Load failed:', e); });
     }
 
-    async function refreshNow() {
-      try { await fetch('/api/refresh'); await loadData(); } catch (e) { console.error('Refresh failed:', e); }
+    function refreshNow() {
+      var btn = document.querySelector('.btn');
+      if (btn) btn.textContent = 'Refreshing...';
+      fetch('/api/refresh').then(function() {
+        setTimeout(function() {
+          loadData();
+          if (btn) btn.textContent = 'Refresh';
+        }, 2000);
+      }).catch(function(e) { console.error('Refresh failed:', e); });
     }
 
-    // Request notification permission
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
+    // Request notification permission on first user interaction
+    document.addEventListener('click', function requestNotifPerm() {
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+      document.removeEventListener('click', requestNotifPerm);
+    });
 
     loadData();
     setInterval(loadData, 15000);
 
     // ── IT Infrastructure Globe ────────────────────────────────────────────
-    let globe;
-    let autoFly = true;
-    let lastGeoHash = '';
-    let globeInited = false;
-    let activeFilters = new Set(['all','cloud','itsm','hospitality','payment','collab','backup','cdn','idp','monitoring','hosting']);
-    let allGeoPoints = [];
-    let allGeoHotspots = [];
+    var globe = null;
+    var autoFly = true;
+    var lastGeoHash = '';
+    var globeInited = false;
+    var activeFilters = new Set(['all','cloud','itsm','hospitality','payment','collab','backup','cdn','idp','monitoring','hosting']);
+    var allGeoPoints = [];
+    var allGeoHotspots = [];
 
-    const CAT_MAP = {
+    var CAT_MAP = {
       'Oracle OCI': 'cloud', 'AWS': 'cloud', 'Azure': 'cloud', 'Cloudflare': 'cloud', 'Google Cloud': 'cloud',
       'DigitalOcean': 'hosting', 'Fastly': 'cdn', 'Akamai': 'cdn', 'Imperva': 'cdn',
       'ServiceNow': 'itsm', 'Atlassian': 'itsm', 'Freshservice': 'itsm', 'BMC': 'itsm', 'Ivanti': 'itsm', 'Cherwell': 'itsm',
@@ -447,39 +441,43 @@
       'Deutsche Telekom': 'hosting', 'NTT': 'hosting', 'Telstra': 'hosting', 'Jio': 'hosting', 'Vodafone': 'hosting',
     };
 
-    function getCat(provider) {
-      return CAT_MAP[provider] || 'cloud';
-    }
+    // Simplified world polygons for wireframe country borders
+    var WORLD_POLYS = [
+      [[-170,72],[-170,-72],[170,-72],[170,72],[-170,72]],
+    ];
+
+    function getCat(provider) { return CAT_MAP[provider] || 'cloud'; }
 
     function toggleGlobeFilter(el) {
-      const cat = el.dataset.cat;
+      var cat = el.dataset.cat;
       if (cat === 'all') {
-        const allOn = activeFilters.size === 11;
-        if (allOn) { activeFilters.clear(); document.querySelectorAll('.globe-filter').forEach(f => f.classList.remove('on')); }
-        else { activeFilters = new Set(['all','cloud','itsm','hospitality','payment','collab','backup','cdn','idp','monitoring','hosting']); document.querySelectorAll('.globe-filter').forEach(f => f.classList.add('on')); }
+        var allOn = activeFilters.size === 11;
+        if (allOn) { activeFilters.clear(); document.querySelectorAll('.globe-filter').forEach(function(f) { f.classList.remove('on'); }); }
+        else { activeFilters = new Set(['all','cloud','itsm','hospitality','payment','collab','backup','cdn','idp','monitoring','hosting']); document.querySelectorAll('.globe-filter').forEach(function(f) { f.classList.add('on'); }); }
       } else {
         activeFilters.has(cat) ? activeFilters.delete(cat) : activeFilters.add(cat);
         el.classList.toggle('on', activeFilters.has(cat));
-        document.querySelector('.globe-filter[data-cat="all"]').classList.toggle('on', activeFilters.size === 11);
+        var allBtn = document.querySelector('.globe-filter[data-cat="all"]');
+        if (allBtn) allBtn.classList.toggle('on', activeFilters.size === 11);
       }
       applyGlobeFilters();
     }
 
     function applyGlobeFilters() {
       if (!globe) return;
-      const pts = allGeoPoints.filter(p => {
+      var pts = allGeoPoints.filter(function(p) {
         if (p.weight > 0) return true;
         return activeFilters.has(getCat(p.provider || ''));
       });
-      const hotspots = allGeoHotspots.filter(h => true);
       globe.pointsData(pts);
-      const issueCount = pts.filter(p => p.weight > 0).length;
-      document.getElementById('globeStats').innerHTML = `${pts.length} locations &bull; ${issueCount} issues`;
+      var issueCount = pts.filter(function(p) { return p.weight > 0; }).length;
+      var el = document.getElementById('globeStats');
+      if (el) el.innerHTML = pts.length + ' locations &bull; ' + issueCount + ' issues';
     }
 
     function initGlobe() {
       if (globeInited) return;
-      const container = document.getElementById('globe-container');
+      var container = document.getElementById('globe-container');
       if (!container || !window.Globe) return;
 
       globe = Globe()(container)
@@ -488,30 +486,44 @@
         .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
         .atmosphereColor('#3b82f6')
         .atmosphereAltitude(0.25)
+        // Polygon wireframe for country borders
+        .polygonsData(WORLD_POLYS)
+        .polygonCapColor(function() { return 'rgba(6,182,212,0.02)'; })
+        .polygonSideColor(function() { return 'rgba(6,182,212,0.05)'; })
+        .polygonStrokeColor(function() { return 'rgba(6,182,212,0.25)'; })
+        .polygonAltitude(0.002)
+        .polygonCapDesh(function() { return 2; })
+        // Points
         .pointsData([])
-        .pointAltitude(d => d.weight > 0 ? 0.06 + d.weight * 0.02 : 0.01)
-        .pointRadius(d => d.weight > 0 ? 0.4 + d.weight * 0.15 : 0.15)
-        .pointColor(d => d.color || '#446688')
-        .pointLabel(d => `<div style="background:rgba(10,14,26,.92);padding:8px 12px;border-radius:6px;border:1px solid #2a3454;font-size:12px;max-width:280px">
-          <div style="font-weight:600;margin-bottom:2px">${d.label || 'Unknown'}</div>
-          <div style="color:var(--t3);font-size:10px">${d.provider || ''}</div>
-          ${d.weight > 0 ? '<div style="color:#ff8800;margin-top:2px">Severity: ' + d.weight + '/5</div>' : '<div style="color:#446688;margin-top:2px">Normal</div>'}
-        </div>`)
-        .onPointClick(d => {
+        .pointAltitude(function(d) { return d.weight > 0 ? 0.06 + d.weight * 0.02 : 0.01; })
+        .pointRadius(function(d) { return d.weight > 0 ? 0.4 + d.weight * 0.15 : 0.15; })
+        .pointColor(function(d) { return d.color || '#446688'; })
+        .pointLabel(function(d) {
+          return '<div style="background:rgba(10,14,26,.92);padding:8px 12px;border-radius:6px;border:1px solid #2a3454;font-size:12px;max-width:280px">' +
+            '<div style="font-weight:600;margin-bottom:2px">' + (d.label || 'Unknown') + '</div>' +
+            '<div style="color:#5a6480;font-size:10px">' + (d.provider || '') + '</div>' +
+            (d.weight > 0 ? '<div style="color:#ff8800;margin-top:2px">Severity: ' + d.weight + '/5</div>' : '<div style="color:#446688;margin-top:2px">Normal</div>') +
+            '</div>';
+        })
+        .onPointClick(function(d) {
           if (d.lat && d.lng) {
             globe.pointOfView({ lat: d.lat, lng: d.lng, altitude: 0.4 }, 1000);
-            const info = document.getElementById('globeInfo');
-            info.className = 'globe-info show';
-            info.innerHTML = `<strong>${d.label || 'Unknown'}</strong><br><span style="color:var(--t3)">${d.provider || ''} &bull; ${d.weight > 0 ? 'Severity: ' + d.weight + '/5' : 'Operational'}</span>`;
+            var info = document.getElementById('globeInfo');
+            if (info) {
+              info.className = 'globe-info show';
+              info.innerHTML = '<strong>' + (d.label || 'Unknown') + '</strong><br><span style="color:#5a6480">' + (d.provider || '') + ' &bull; ' + (d.weight > 0 ? 'Severity: ' + d.weight + '/5' : 'Operational') + '</span>';
+            }
           }
         })
+        // Rings
         .ringsData([])
-        .ringColor(d => d.color || 'rgba(255,0,64,0.35)')
-        .ringMaxRadius(d => d.radius || 5)
-        .ringPropagationSpeed(d => 2)
-        .ringRepeatPeriod(d => 1200)
+        .ringColor(function(d) { return d.color || 'rgba(255,0,64,0.35)'; })
+        .ringMaxRadius(function(d) { return d.radius || 5; })
+        .ringPropagationSpeed(2)
+        .ringRepeatPeriod(1200)
+        // Arcs
         .arcsData([])
-        .arcColor(() => 'rgba(6,182,212,0.3)')
+        .arcColor(function() { return 'rgba(6,182,212,0.3)'; })
         .arcDashLength(0.4)
         .arcDashGap(0.2)
         .arcDashAnimateTime(2000)
@@ -523,10 +535,9 @@
     }
 
     function updateGlobe() {
-      if (!globe || !clientStatus.geo) return;
-      const geo = clientStatus.geo;
-
-      const hash = JSON.stringify(geo.points?.length) + JSON.stringify(geo.hotspots?.length);
+      if (!globe || !clientStatus || !clientStatus.geo) return;
+      var geo = clientStatus.geo;
+      var hash = JSON.stringify(geo.points ? geo.points.length : 0) + '|' + JSON.stringify(geo.hotspots ? geo.hotspots.length : 0);
       if (hash === lastGeoHash) return;
       lastGeoHash = hash;
 
@@ -534,26 +545,28 @@
       allGeoHotspots = geo.hotspots || [];
 
       applyGlobeFilters();
-
       globe.ringsData(allGeoHotspots);
 
-      const arcs = [];
-      const providerGroups = {};
-      for (const p of allGeoPoints) {
+      var arcs = [];
+      var providerGroups = {};
+      for (var i = 0; i < allGeoPoints.length; i++) {
+        var p = allGeoPoints[i];
         if (p.weight < 2) continue;
-        const cat = getCat(p.provider || '');
+        var cat = getCat(p.provider || '');
         if (!providerGroups[cat]) providerGroups[cat] = [];
         providerGroups[cat].push(p);
       }
-      for (const [cat, pts] of Object.entries(providerGroups)) {
-        for (let i = 0; i < pts.length - 1; i++) {
-          arcs.push({ startLat: pts[i].lat, startLng: pts[i].lng, endLat: pts[i+1].lat, endLng: pts[i+1].lng });
+      var cats = Object.keys(providerGroups);
+      for (var c = 0; c < cats.length; c++) {
+        var pts = providerGroups[cats[c]];
+        for (var j = 0; j < pts.length - 1; j++) {
+          arcs.push({ startLat: pts[j].lat, startLng: pts[j].lng, endLat: pts[j+1].lat, endLng: pts[j+1].lng });
         }
       }
       globe.arcsData(arcs);
 
-      if (autoFly && allGeoPoints) {
-        const issuePoint = allGeoPoints.find(p => p.weight >= 3 && p.isChange);
+      if (autoFly) {
+        var issuePoint = allGeoPoints.find(function(p) { return p.weight >= 3 && p.isChange; });
         if (issuePoint) {
           globe.pointOfView({ lat: issuePoint.lat, lng: issuePoint.lng, altitude: 0.5 }, 2000);
         }
@@ -562,47 +575,30 @@
 
     function toggleAutoFly() {
       autoFly = !autoFly;
-      const btn = document.getElementById('btnAutoFly');
-      btn.textContent = autoFly ? 'Auto-Fly: ON' : 'Auto-Fly: OFF';
-      btn.classList.toggle('active', autoFly);
+      var btn = document.getElementById('btnAutoFly');
+      if (btn) { btn.textContent = autoFly ? 'Auto-Fly: ON' : 'Auto-Fly: OFF'; btn.classList.toggle('active', autoFly); }
     }
 
     function resetGlobeView() {
       if (globe) globe.pointOfView({ lat: 30, lng: 0, altitude: 1.8 }, 1000);
-      document.getElementById('globeInfo').className = 'globe-info';
+      var info = document.getElementById('globeInfo');
+      if (info) info.className = 'globe-info';
     }
 
     function flyToIssues() {
       if (!globe) return;
-      const issues = allGeoPoints.filter(p => p.weight >= 2);
+      var issues = allGeoPoints.filter(function(p) { return p.weight >= 2; });
       if (issues.length > 0) {
-        const worst = issues.sort((a,b) => b.weight - a.weight)[0];
+        issues.sort(function(a,b) { return b.weight - a.weight; });
+        var worst = issues[0];
         globe.pointOfView({ lat: worst.lat, lng: worst.lng, altitude: 0.4 }, 2000);
-        const info = document.getElementById('globeInfo');
-        info.className = 'globe-info show';
-        info.innerHTML = `<strong>${worst.label || 'Issue'}</strong> — Severity ${worst.weight}/5<br><span style="color:var(--t3)">${worst.provider || ''}</span>`;
+        var info = document.getElementById('globeInfo');
+        if (info) {
+          info.className = 'globe-info show';
+          info.innerHTML = '<strong>' + (worst.label || 'Issue') + '</strong> &mdash; Severity ' + worst.weight + '/5<br><span style="color:#5a6480">' + (worst.provider || '') + '</span>';
+        }
       }
     }
-
-    const origShowTab = showTab;
-    showTab = function(el, name) {
-      origShowTab(el, name);
-      if (name === 'globe') {
-        setTimeout(() => {
-          initGlobe();
-          if (globe) {
-            const c = document.getElementById('globe-container');
-            globe.width(c.clientWidth).height(c.clientHeight);
-          }
-        }, 50);
-      }
-    };
-
-    const origRender = render;
-    render = function(data) {
-      origRender(data);
-      if (globeInited) updateGlobe();
-    };
   </script>
 </body>
 </html>
