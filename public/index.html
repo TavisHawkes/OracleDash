@@ -218,6 +218,7 @@
   <script>
     let lastChangeCount = 0;
     let audioCtx;
+    let clientStatus = {};
 
     function playAlert(severity) {
       if (!document.getElementById('soundEnabled').checked) return;
@@ -278,6 +279,7 @@
 
     function render(data) {
       if (!data) return;
+      clientStatus = data;
       const services = data.services || {};
       const changes = data.changes || [];
       const dd = data.downdetector || [];
@@ -521,8 +523,8 @@
     }
 
     function updateGlobe() {
-      if (!globe || !statusCache.geo) return;
-      const geo = statusCache.geo;
+      if (!globe || !clientStatus.geo) return;
+      const geo = clientStatus.geo;
 
       const hash = JSON.stringify(geo.points?.length) + JSON.stringify(geo.hotspots?.length);
       if (hash === lastGeoHash) return;
