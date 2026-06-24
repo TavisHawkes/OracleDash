@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Oracle Status Dashboard</title>
+  <script src="https://unpkg.com/globe.gl@2.35.1/dist/globe.gl.min.js"></script>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     :root{--bg:#0a0e1a;--bg2:#111827;--card:#1a2236;--card2:#1f2a42;--bdr:#2a3454;--t1:#e8edf5;--t2:#8b95b0;--t3:#5a6480;--blue:#3b82f6;--cyan:#06b6d4;--green:#10b981;--yellow:#f59e0b;--red:#ef4444;--purple:#8b5cf6;--orange:#f97316}
@@ -87,6 +88,17 @@
     ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--bdr);border-radius:3px}
     .sound-toggle{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--t3)}
     .sound-toggle input{accent-color:var(--blue)}
+    #globe-container{width:100%;height:75vh;border-radius:12px;overflow:hidden;border:1px solid var(--bdr);background:#000;position:relative}
+    .globe-overlay{position:absolute;top:12px;left:12px;z-index:10;display:flex;gap:8px;flex-wrap:wrap}
+    .globe-legend{background:rgba(10,14,26,.88);border:1px solid var(--bdr);border-radius:8px;padding:10px 14px;font-size:11px;color:var(--t2)}
+    .globe-legend-item{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+    .globe-legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+    .globe-info{position:absolute;bottom:12px;left:12px;right:12px;z-index:10;background:rgba(10,14,26,.9);border:1px solid var(--bdr);border-radius:8px;padding:10px 14px;font-size:12px;display:none}
+    .globe-info.show{display:block}
+    .globe-controls{position:absolute;top:12px;right:12px;z-index:10;display:flex;flex-direction:column;gap:6px}
+    .globe-btn{background:rgba(10,14,26,.88);border:1px solid var(--bdr);color:var(--t1);padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;transition:.2s}
+    .globe-btn:hover{border-color:var(--blue);background:var(--card2)}
+    .globe-btn.active{border-color:var(--cyan);color:var(--cyan)}
   </style>
 </head>
 <body>
@@ -121,6 +133,7 @@
       <div class="tab" onclick="showTab(this,'feeds')">RSS Feeds</div>
       <div class="tab" onclick="showTab(this,'dd')">DownDetector</div>
       <div class="tab" onclick="showTab(this,'endpoints')">Endpoints</div>
+      <div class="tab" onclick="showTab(this,'globe')">IT Globe</div>
     </div>
 
     <div class="tab-content active" id="tab-overview">
@@ -152,6 +165,29 @@
 
     <div class="tab-content" id="tab-endpoints">
       <div class="card"><div class="card-title">Endpoint Health</div><div id="epList" class="ep-list"><div class="loading">Loading...</div></div></div>
+    </div>
+
+    <div class="tab-content" id="tab-globe">
+      <div class="card" style="padding:0;overflow:hidden">
+        <div id="globe-container">
+          <div class="globe-overlay">
+            <div class="globe-legend">
+              <div style="font-weight:600;margin-bottom:6px">Infrastructure Map</div>
+              <div class="globe-legend-item"><div class="globe-legend-dot" style="background:#ff0040"></div>Major Outage</div>
+              <div class="globe-legend-item"><div class="globe-legend-dot" style="background:#ff8800"></div>Degraded</div>
+              <div class="globe-legend-item"><div class="globe-legend-dot" style="background:#ffcc00"></div>Possible Issues</div>
+              <div class="globe-legend-item"><div class="globe-legend-dot" style="background:#00ffff"></div>Status Change</div>
+              <div class="globe-legend-item"><div class="globe-legend-dot" style="background:#446688"></div>Infrastructure</div>
+            </div>
+          </div>
+          <div class="globe-controls">
+            <button class="globe-btn active" id="btnAutoFly" onclick="toggleAutoFly()">Auto-Fly: ON</button>
+            <button class="globe-btn" onclick="resetGlobeView()">Reset View</button>
+            <button class="globe-btn" onclick="flyToIssues()">Fly to Issues</button>
+          </div>
+          <div class="globe-info" id="globeInfo"></div>
+        </div>
+      </div>
     </div>
   </main>
 
@@ -355,6 +391,146 @@
 
     loadData();
     setInterval(loadData, 15000);
+
+    // ── IT Infrastructure Globe ────────────────────────────────────────────
+    let globe;
+    let autoFly = true;
+    let lastGeoHash = '';
+    let globeInited = false;
+
+    function initGlobe() {
+      if (globeInited) return;
+      const container = document.getElementById('globe-container');
+      if (!container || !window.Globe) return;
+
+      globe = Globe()(container)
+        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+        .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+        .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
+        .atmosphereColor('#3b82f6')
+        .atmosphereAltitude(0.25)
+        // Points (outages/issues)
+        .pointsData([])
+        .pointAltitude(d => d.weight > 0 ? 0.06 + d.weight * 0.02 : 0.01)
+        .pointRadius(d => d.weight > 0 ? 0.4 + d.weight * 0.15 : 0.15)
+        .pointColor(d => d.color || '#446688')
+        .pointLabel(d => `<div style="background:rgba(10,14,26,.92);padding:8px 12px;border-radius:6px;border:1px solid #2a3454;font-size:12px;max-width:280px">
+          <div style="font-weight:600;margin-bottom:2px">${d.label || 'Unknown'}</div>
+          ${d.weight > 0 ? '<div style="color:#ff8800">Severity: ' + d.weight + '/5</div>' : '<div style="color:#446688">Normal</div>'}
+        </div>`)
+        .onPointClick(d => {
+          if (d.lat && d.lng) {
+            globe.pointOfView({ lat: d.lat, lng: d.lng, altitude: 0.4 }, 1000);
+            const info = document.getElementById('globeInfo');
+            info.className = 'globe-info show';
+            info.innerHTML = `<strong>${d.label || 'Unknown'}</strong><br><span style="color:var(--t3)">${d.weight > 0 ? 'Severity: ' + d.weight + '/5' : 'Operational'}</span>`;
+          }
+        })
+        // Rings (active outage hotspots)
+        .ringsData([])
+        .ringColor(d => d.color || 'rgba(255,0,64,0.35)')
+        .ringMaxRadius(d => d.radius || 5)
+        .ringPropagationSpeed(d => 2)
+        .ringRepeatPeriod(d => 1200)
+        .ringLabel(d => `<div style="background:rgba(10,14,26,.92);padding:8px 12px;border-radius:6px;border:1px solid #2a3454;font-size:12px;max-width:280px">
+          <div style="font-weight:600;margin-bottom:2px">${d.label || 'Unknown'}</div>
+          <div style="color:#ff0040">Hotspot: ${d.weight || 1}/4</div>
+        </div>`)
+        // Arcs (connections)
+        .arcsData([])
+        .arcColor(() => 'rgba(6,182,212,0.3)')
+        .arcDashLength(0.4)
+        .arcDashGap(0.2)
+        .arcDashAnimateTime(2000)
+        .width(container.clientWidth)
+        .height(container.clientHeight);
+
+      globeInited = true;
+      updateGlobe();
+    }
+
+    function updateGlobe() {
+      if (!globe || !statusCache.geo) return;
+      const geo = statusCache.geo;
+
+      // Create a hash of the data to avoid unnecessary updates
+      const hash = JSON.stringify(geo.points?.length) + JSON.stringify(geo.hotspots?.length);
+      if (hash === lastGeoHash) return;
+      lastGeoHash = hash;
+
+      globe.pointsData(geo.points || []);
+      globe.ringsData(geo.hotspots || []);
+
+      // Build arcs between related outage points (same provider)
+      const arcs = [];
+      const providerGroups = {};
+      for (const p of (geo.points || [])) {
+        if (p.weight < 2) continue;
+        const prov = p.provider || 'unknown';
+        if (!providerGroups[prov]) providerGroups[prov] = [];
+        providerGroups[prov].push(p);
+      }
+      for (const [prov, pts] of Object.entries(providerGroups)) {
+        for (let i = 0; i < pts.length - 1; i++) {
+          arcs.push({ startLat: pts[i].lat, startLng: pts[i].lng, endLat: pts[i+1].lat, endLng: pts[i+1].lng });
+        }
+      }
+      globe.arcsData(arcs);
+
+      // Auto-fly to newest issue if enabled
+      if (autoFly && geo.points) {
+        const issuePoint = geo.points.find(p => p.weight >= 3 && p.isChange);
+        if (issuePoint) {
+          globe.pointOfView({ lat: issuePoint.lat, lng: issuePoint.lng, altitude: 0.5 }, 2000);
+        }
+      }
+    }
+
+    function toggleAutoFly() {
+      autoFly = !autoFly;
+      const btn = document.getElementById('btnAutoFly');
+      btn.textContent = autoFly ? 'Auto-Fly: ON' : 'Auto-Fly: OFF';
+      btn.classList.toggle('active', autoFly);
+    }
+
+    function resetGlobeView() {
+      if (globe) globe.pointOfView({ lat: 30, lng: 0, altitude: 1.8 }, 1000);
+      document.getElementById('globeInfo').className = 'globe-info';
+    }
+
+    function flyToIssues() {
+      if (!globe || !statusCache.geo) return;
+      const issues = (statusCache.geo.points || []).filter(p => p.weight >= 2);
+      if (issues.length > 0) {
+        const worst = issues.sort((a,b) => b.weight - a.weight)[0];
+        globe.pointOfView({ lat: worst.lat, lng: worst.lng, altitude: 0.4 }, 2000);
+        const info = document.getElementById('globeInfo');
+        info.className = 'globe-info show';
+        info.innerHTML = `<strong>${worst.label || 'Issue'}</strong> — Severity ${worst.weight}/5`;
+      }
+    }
+
+    // Init globe when tab is first shown
+    const origShowTab = showTab;
+    showTab = function(el, name) {
+      origShowTab(el, name);
+      if (name === 'globe') {
+        setTimeout(() => {
+          initGlobe();
+          if (globe) {
+            const c = document.getElementById('globe-container');
+            globe.width(c.clientWidth).height(c.clientHeight);
+          }
+        }, 50);
+      }
+    };
+
+    // Update globe when data refreshes
+    const origRender = render;
+    render = function(data) {
+      origRender(data);
+      if (globeInited) updateGlobe();
+    };
   </script>
 </body>
 </html>
