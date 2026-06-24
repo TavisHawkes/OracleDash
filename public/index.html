@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Oracle Status Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg-primary: #0a0e1a;
+      --bg-secondary: #111827;
+      --bg-card: #1a2236;
+      --bg-card-hover: #1f2a42;
+      --border: #2a3454;
+      --text-primary: #e8edf5;
+      --text-secondary: #8b95b0;
+      --text-muted: #5a6480;
+      --accent-blue: #3b82f6;
+      --accent-cyan: #06b6d4;
+      --accent-green: #10b981;
+      --accent-yellow: #f59e0b;
+      --accent-red: #ef4444;
+      --accent-purple: #8b5cf6;
+      --gradient-blue: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
+      --gradient-green: linear-gradient(135deg, #10b981 0%, #06d6a0 100%);
+      --gradient-red: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      --gradient-yellow: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    }
+
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    .header {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .logo {
+      width: 40px;
+      height: 40px;
+      background: var(--gradient-blue);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 18px;
+      color: white;
+    }
+
+    .header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .overall-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-operational {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-green);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .status-degraded {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--accent-yellow);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    .status-down {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--accent-red);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .last-updated {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .refresh-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+
+    .refresh-btn:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--accent-blue);
+    }
+
+    .main {
+      padding: 24px 32px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    .grid {
+      display: grid;
+      gap: 20px;
+    }
+
+    .grid-4 { grid-template-columns: repeat(4, 1fr); }
+    .grid-3 { grid-template-columns: repeat(3, 1fr); }
+    .grid-2 { grid-template-columns: repeat(2, 1fr); }
+    .grid-1 { grid-template-columns: 1fr; }
+
+    @media (max-width: 1200px) {
+      .grid-4 { grid-template-columns: repeat(2, 1fr); }
+      .grid-3 { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 768px) {
+      .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; }
+      .header { padding: 12px 16px; flex-wrap: wrap; gap: 12px; }
+      .main { padding: 16px; }
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      transition: all 0.2s;
+    }
+
+    .card:hover {
+      border-color: rgba(59, 130, 246, 0.3);
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .metric-value {
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 4px;
+    }
+
+    .metric-label {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 32px 0 16px 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .service-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .service-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .service-name {
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .service-status-badge {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .badge-operational {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-green);
+    }
+
+    .badge-degraded {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--accent-yellow);
+    }
+
+    .badge-down {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--accent-red);
+    }
+
+    .badge-na {
+      background: rgba(90, 100, 128, 0.15);
+      color: var(--text-muted);
+    }
+
+    .incident-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+
+    .incident-item {
+      padding: 14px 16px;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      border-left: 3px solid var(--accent-yellow);
+    }
+
+    .incident-item.critical {
+      border-left-color: var(--accent-red);
+    }
+
+    .incident-item.resolved {
+      border-left-color: var(--accent-green);
+    }
+
+    .incident-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .incident-date {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .incident-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .rss-feed {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 600px;
+      overflow-y: auto;
+    }
+
+    .rss-item {
+      padding: 14px 16px;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      transition: all 0.2s;
+    }
+
+    .rss-item:hover {
+      border-color: var(--accent-blue);
+      background: var(--bg-card-hover);
+    }
+
+    .rss-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .rss-title a {
+      color: var(--text-primary);
+      text-decoration: none;
+    }
+
+    .rss-title a:hover {
+      color: var(--accent-blue);
+    }
+
+    .rss-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .rss-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .region-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+
+    .region-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .region-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .region-name {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .region-status {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .region-services {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .region-service {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .endpoint-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .endpoint-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+    }
+
+    .endpoint-name {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .endpoint-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    .latency {
+      color: var(--text-muted);
+    }
+
+    .ticker-wrap {
+      overflow: hidden;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 0;
+      margin-bottom: 24px;
+    }
+
+    .ticker {
+      display: flex;
+      gap: 48px;
+      animation: ticker 60s linear infinite;
+      white-space: nowrap;
+    }
+
+    .ticker:hover { animation-play-state: paused; }
+
+    @keyframes ticker {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    .ticker-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .ticker-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 20px;
+      background: var(--bg-secondary);
+      border-radius: 10px;
+      padding: 4px;
+      border: 1px solid var(--border);
+    }
+
+    .tab {
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      transition: all 0.2s;
+    }
+
+    .tab:hover { color: var(--text-primary); }
+
+    .tab.active {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .loading::before {
+      content: '';
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent-blue);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 10px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-muted);
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">OCI</div>
+      <div>
+        <h1>Oracle Status Dashboard</h1>
+        <div class="last-updated">Last updated: <span id="lastUpdated">Loading...</span></div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div id="overallStatus" class="overall-status status-operational">
+        <div class="status-dot"></div>
+        <span>Loading...</span>
+      </div>
+      <button class="refresh-btn" onclick="refreshData()">Refresh</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <!-- News Ticker -->
+    <div class="ticker-wrap">
+      <div class="ticker" id="ticker"></div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-4" style="margin-bottom: 24px;">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">OCI Services</div>
+          <div class="card-icon" style="background: rgba(59,130,246,0.15); color: var(--accent-blue);">☁</div>
+        </div>
+        <div class="metric-value" id="totalServices">-</div>
+        <div class="metric-label">Total monitored services</div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Operational</div>
+          <div class="card-icon" style="background: rgba(16,185,129,0.15); color: var(--accent-green);">✓</div>
+        </div>
+        <div class="metric-value" style="color: var(--accent-green);" id="operationalCount">-</div>
+        <div class="metric-label">Services healthy</div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Issues Detected</div>
+          <div class="card-icon" style="background: rgba(245,158,11,0.15); color: var(--accent-yellow);">!</div>
+        </div>
+        <div class="metric-value" style="color: var(--accent-yellow);" id="issuesCount">-</div>
+        <div class="metric-label">Degraded or down</div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">DD Reports</div>
+          <div class="card-icon" style="background: rgba(139,92,246,0.15); color: var(--accent-purple);">⚡</div>
+        </div>
+        <div class="metric-value" style="color: var(--accent-purple);" id="ddReports">-</div>
+        <div class="metric-label">DownDetector reports</div>
+      </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('overview')">Overview</div>
+      <div class="tab" onclick="switchTab('regions')">Regions</div>
+      <div class="tab" onclick="switchTab('incidents')">Incidents</div>
+      <div class="tab" onclick="switchTab('feeds')">RSS Feeds</div>
+      <div class="tab" onclick="switchTab('endpoints')">Endpoints</div>
+    </div>
+
+    <!-- Overview Tab -->
+    <div class="tab-content active" id="tab-overview">
+      <div class="grid grid-2">
+        <!-- OCI Status -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">OCI Cloud Services Status</div>
+          </div>
+          <div id="ociServices" class="service-list">
+            <div class="loading">Loading OCI status...</div>
+          </div>
+        </div>
+
+        <!-- Incidents -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Recent Incidents</div>
+          </div>
+          <div id="incidentList" class="incident-list">
+            <div class="loading">Loading incidents...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Regions Tab -->
+    <div class="tab-content" id="tab-regions">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Global Region Status</div>
+        </div>
+        <div id="regionGrid" class="region-grid">
+          <div class="loading">Loading regions...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Incidents Tab -->
+    <div class="tab-content" id="tab-incidents">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">All Incidents</div>
+        </div>
+        <div id="allIncidents" class="incident-list">
+          <div class="loading">Loading incidents...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RSS Feeds Tab -->
+    <div class="tab-content" id="tab-feeds">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Oracle News & Status RSS</div>
+        </div>
+        <div id="rssFeed" class="rss-feed">
+          <div class="loading">Loading RSS feeds...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Endpoints Tab -->
+    <div class="tab-content" id="tab-endpoints">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Endpoint Health Checks</div>
+        </div>
+        <div id="endpointList" class="endpoint-list">
+          <div class="loading">Loading endpoints...</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let currentData = {};
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('tab-' + tab).classList.add('active');
+    }
+
+    function updateOverallStatus(data) {
+      const el = document.getElementById('overallStatus');
+      const indicator = data?.oci?.status?.status?.indicator;
+      const ddStatus = data?.downdetector?.status;
+
+      let status = 'operational';
+      let label = 'All Systems Operational';
+
+      if (indicator === 'major') {
+        status = 'down';
+        label = 'Major Outage';
+      } else if (indicator === 'minor' || indicator === 'critical') {
+        status = 'degraded';
+        label = 'Service Disruption';
+      } else if (ddStatus === 'issues') {
+        status = 'degraded';
+        label = 'Reports Detected';
+      }
+
+      el.className = `overall-status status-${status}`;
+      el.innerHTML = `<div class="status-dot"></div><span>${label}</span>`;
+    }
+
+    function updateSummaryCards(data) {
+      const oci = data?.oci?.components;
+      if (!oci?.components) return;
+
+      let total = 0, operational = 0, issues = 0;
+      const seen = new Set();
+
+      for (const component of oci.components) {
+        if (seen.has(component.name)) continue;
+        seen.add(component.name);
+        total++;
+        if (component.status === 'operational') operational++;
+        else issues++;
+      }
+
+      document.getElementById('totalServices').textContent = total;
+      document.getElementById('operationalCount').textContent = operational;
+      document.getElementById('issuesCount').textContent = issues;
+      document.getElementById('ddReports').textContent = data?.downdetector?.reports ?? '-';
+    }
+
+    function updateOCIServices(data) {
+      const el = document.getElementById('ociServices');
+      const components = data?.oci?.components?.components;
+
+      if (!components?.length) {
+        el.innerHTML = '<div class="empty-state">No OCI data available</div>';
+        return;
+      }
+
+      const seen = new Map();
+      for (const c of components) {
+        if (!seen.has(c.name)) seen.set(c.name, c.status);
+      }
+
+      let html = '';
+      for (const [name, status] of seen) {
+        const badgeClass = status === 'operational' ? 'badge-operational'
+          : status === 'degraded' ? 'badge-degraded'
+          : status === 'down' ? 'badge-down'
+          : 'badge-na';
+        html += `
+          <div class="service-row">
+            <div class="service-name">${name}</div>
+            <div class="service-status-badge ${badgeClass}">${status}</div>
+          </div>`;
+      }
+
+      el.innerHTML = html;
+    }
+
+    function updateIncidents(data) {
+      const incidents = data?.incidents || [];
+      const el = document.getElementById('incidentList');
+      const allEl = document.getElementById('allIncidents');
+
+      if (!incidents.length) {
+        const empty = '<div class="empty-state">No active incidents</div>';
+        el.innerHTML = empty;
+        allEl.innerHTML = empty;
+        return;
+      }
+
+      const html = incidents.map(inc => {
+        const isResolved = inc.title?.toLowerCase().includes('resolved');
+        const isCritical = inc.title?.toLowerCase().includes('major') || inc.description?.toLowerCase().includes('outage');
+        const cls = isResolved ? 'resolved' : isCritical ? 'critical' : '';
+        return `
+          <div class="incident-item ${cls}">
+            <div class="incident-title">${inc.title || 'Untitled Incident'}</div>
+            <div class="incident-date">${inc.pubDate ? new Date(inc.pubDate).toLocaleString() : ''}</div>
+            <div class="incident-desc">${inc.description || ''}</div>
+          </div>`;
+      }).join('');
+
+      el.innerHTML = html;
+      allEl.innerHTML = html;
+    }
+
+    function updateRegions(data) {
+      const el = document.getElementById('regionGrid');
+      const regions = data?.oci?.components?.regionHealthReports;
+
+      if (!regions?.length) {
+        el.innerHTML = '<div class="empty-state">No region data available</div>';
+        return;
+      }
+
+      el.innerHTML = regions.map(r => {
+        const allOk = r.services?.every(s => s.status === 'operational');
+        const statusColor = allOk ? 'var(--accent-green)' : 'var(--accent-yellow)';
+
+        const servicesHtml = (r.services || []).slice(0, 6).map(s => `
+          <div class="region-service">
+            <span>${s.name || s}</span>
+            <span class="service-status-badge ${s.status === 'operational' ? 'badge-operational' : 'badge-degraded'}" style="font-size:10px; padding:2px 6px;">${s.status || ''}</span>
+          </div>
+        `).join('');
+
+        return `
+          <div class="region-card">
+            <div class="region-header">
+              <div class="region-name">${r.name || r.regionId || 'Unknown Region'}</div>
+              <div class="region-status" style="background: ${statusColor};"></div>
+            </div>
+            <div class="region-services">${servicesHtml}</div>
+          </div>`;
+      }).join('');
+    }
+
+    function updateRSS(data) {
+      const el = document.getElementById('rssFeed');
+      const items = data?.rss || [];
+
+      if (!items.length) {
+        el.innerHTML = '<div class="empty-state">No RSS items available</div>';
+        return;
+      }
+
+      el.innerHTML = items.map(item => `
+        <div class="rss-item">
+          <div class="rss-meta">
+            <span>${item.source || 'RSS'}</span> · ${item.pubDate ? new Date(item.pubDate).toLocaleString() : ''}
+          </div>
+          <div class="rss-title">
+            ${item.link ? `<a href="${item.link}" target="_blank" rel="noopener">${item.title}</a>` : item.title}
+          </div>
+          <div class="rss-desc">${item.description || ''}</div>
+        </div>
+      `).join('');
+    }
+
+    function updateEndpoints(data) {
+      const el = document.getElementById('endpointList');
+      const endpoints = data?.endpoints || [];
+
+      if (!endpoints.length) {
+        el.innerHTML = '<div class="empty-state">No endpoint data available</div>';
+        return;
+      }
+
+      el.innerHTML = endpoints.map(ep => {
+        const color = ep.status === 'reachable' ? 'var(--accent-green)' : 'var(--accent-red)';
+        const icon = ep.status === 'reachable' ? '✓' : '✗';
+        return `
+          <div class="endpoint-item">
+            <div class="endpoint-name">${ep.name}</div>
+            <div class="endpoint-status">
+              <span class="latency">${ep.latency ? ep.latency + 'ms' : ''}</span>
+              <span style="color: ${color}; font-weight: 600;">${icon} ${ep.status}</span>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function updateTicker(data) {
+      const el = document.getElementById('ticker');
+      const rss = data?.rss || [];
+      const incidents = data?.incidents || [];
+
+      const items = [...rss.slice(0, 5), ...incidents.slice(0, 5)];
+      if (!items.length) {
+        el.innerHTML = '<div class="ticker-item">Oracle Status Dashboard - All systems monitoring</div>';
+        return;
+      }
+
+      const tickerHtml = items.map(item => {
+        const isIncident = !!(item.source === 'OCI Incidents');
+        const dotColor = isIncident ? 'var(--accent-yellow)' : 'var(--accent-cyan)';
+        return `<div class="ticker-item"><div class="ticker-dot" style="background: ${dotColor};"></div>${item.title || item.description || ''}</div>`;
+      }).join('');
+
+      el.innerHTML = tickerHtml + tickerHtml;
+    }
+
+    function updateLastUpdated(data) {
+      if (data?.lastUpdated) {
+        document.getElementById('lastUpdated').textContent = new Date(data.lastUpdated).toLocaleString();
+      }
+    }
+
+    async function loadData() {
+      try {
+        const res = await fetch('/api/status');
+        currentData = await res.json();
+
+        updateOverallStatus(currentData);
+        updateSummaryCards(currentData);
+        updateOCIServices(currentData);
+        updateIncidents(currentData);
+        updateRegions(currentData);
+        updateRSS(currentData);
+        updateEndpoints(currentData);
+        updateTicker(currentData);
+        updateLastUpdated(currentData);
+      } catch (err) {
+        console.error('Failed to load data:', err);
+      }
+    }
+
+    async function refreshData() {
+      try {
+        await fetch('/api/refresh');
+        await loadData();
+      } catch (err) {
+        console.error('Refresh failed:', err);
+      }
+    }
+
+    loadData();
+    setInterval(loadData, 30000);
+  </script>
+</body>
+</html>

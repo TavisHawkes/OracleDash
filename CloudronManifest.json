@@ -1,0 +1,12 @@
+{
+  "manifestVersion": 2,
+  "id": "com.oracle-status-dashboard",
+  "version": "1.0.0",
+  "description": "Monitor Oracle Cloud Infrastructure status, detect outages, and view RSS feeds",
+  "author": "Oracle Status Dashboard",
+  "website": "https://github.com/example/oracle-status-dashboard",
+  "dockerImage": "cloudron/oracle-status-dashboard.cloudronapp:latest",
+  "httpPort": 3000,
+  "healthCheckPath": "/api/health",
+  "addons": {}
+}
