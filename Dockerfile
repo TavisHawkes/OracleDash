@@ -14,5 +14,6 @@ RUN npm install --production
 COPY . .
 
 EXPOSE 3000
+# rebuild
 
 CMD ["node", "/app/code/server.js"]
