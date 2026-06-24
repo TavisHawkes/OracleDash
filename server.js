@@ -4,20 +4,59 @@ const http = require('http');
 const { parseString } = require('xml2js');
 const cron = require('node-cron');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Cache for status data
 let statusCache = {
-  oci: null,
-  downdetector: null,
-  rss: [],
+  services: {},
   incidents: [],
+  rss: [],
+  downdetector: [],
+  endpoints: [],
+  changes: [],
   lastUpdated: null
 };
 
-// Fetch JSON from URL
+const STATE_FILE = '/run/status-state.json';
+
+function loadPreviousState() {
+  try {
+    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+  } catch { return {}; }
+}
+
+function saveCurrentState(state) {
+  try { fs.writeFileSync(STATE_FILE, JSON.stringify(state)); } catch {}
+}
+
+function detectChanges(oldState, newState) {
+  const changes = [];
+  for (const [key, newVal] of Object.entries(newState)) {
+    const oldVal = oldState[key];
+    if (!oldVal) {
+      if (newVal.status !== 'operational' && newVal.status !== 'good') {
+        changes.push({ type: 'new_issue', service: key, status: newVal.status, message: newVal.message || `${key} is now ${newVal.status}` });
+      }
+    } else if (oldVal.status !== newVal.status) {
+      changes.push({
+        type: 'status_change',
+        service: key,
+        oldStatus: oldVal.status,
+        newStatus: newVal.status,
+        message: `${key} changed from ${oldVal.status} to ${newVal.status}`
+      });
+    }
+  }
+  for (const [key, oldVal] of Object.entries(oldState)) {
+    if (!newState[key] && oldVal.status !== 'operational' && oldVal.status !== 'good') {
+      changes.push({ type: 'resolved', service: key, message: `${key} appears to have recovered` });
+    }
+  }
+  return changes;
+}
+
 function fetchJSON(url) {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http;
@@ -25,19 +64,14 @@ function fetchJSON(url) {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        try {
-          resolve(JSON.parse(data));
-        } catch (e) {
-          reject(new Error(`JSON parse error: ${e.message}`));
-        }
+        try { resolve(JSON.parse(data)); } catch (e) { reject(new Error(`JSON parse: ${e.message}`)); }
       });
     });
     req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
   });
 }
 
-// Fetch XML from URL
 function fetchXML(url) {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http;
@@ -45,138 +79,188 @@ function fetchXML(url) {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        parseString(data, (err, result) => {
-          if (err) reject(err);
-          else resolve(result);
-        });
+        parseString(data, (err, result) => err ? reject(err) : resolve(result));
       });
     });
     req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
   });
 }
 
-// Fetch text content for scraping
 function fetchText(url) {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http;
-    const req = client.get(url, { timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+    const req = client.get(url, { timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StatusMonitor/1.0)' } }, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => resolve(data));
     });
     req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
   });
 }
 
-// Fetch OCI status from official API
-async function fetchOCIStatus() {
+async function fetchOCI() {
   try {
     const [components, status] = await Promise.all([
       fetchJSON('https://ocistatus.oraclecloud.com/api/v2/components.json'),
       fetchJSON('https://ocistatus.oraclecloud.com/api/v2/status.json')
     ]);
-    return { components, status, source: 'OCI Official', fetchedAt: new Date().toISOString() };
-  } catch (err) {
-    console.error('OCI status fetch failed:', err.message);
-    return null;
-  }
+    const services = {};
+    const seen = new Set();
+    for (const c of (components.components || [])) {
+      if (seen.has(c.name)) continue;
+      seen.add(c.name);
+      services[`oci_${c.name}`] = { name: c.name, status: c.status, provider: 'Oracle OCI' };
+    }
+    return { services, status: status.status?.indicator || 'none', description: status.status?.description || '' };
+  } catch (e) { console.error('OCI fetch failed:', e.message); return { services: {}, status: 'unknown' }; }
 }
 
-// Fetch OCI incidents RSS
-async function fetchOCIIncidents() {
+async function fetchOCIRSS() {
   try {
     const result = await fetchXML('https://ocistatus.oraclecloud.com/api/v2/incident-summary.rss');
     const items = result?.rss?.channel?.[0]?.item || [];
-    return items.slice(0, 20).map(item => ({
+    return items.slice(0, 15).map(item => ({
       title: item.title?.[0] || '',
-      description: item.description?.[0] || '',
+      description: (item.description?.[0] || '').replace(/<[^>]*>/g, '').substring(0, 300),
       link: item.link?.[0] || '',
-      pubDate: item.pubDate?.[0] || ''
+      pubDate: item.pubDate?.[0] || '',
+      source: 'Oracle OCI'
     }));
-  } catch (err) {
-    console.error('OCI incidents RSS fetch failed:', err.message);
-    return [];
-  }
+  } catch { return []; }
 }
 
-// Parse DownDetector page for Oracle Cloud reports
-async function fetchDownDetector() {
+async function fetchAzureStatus() {
   try {
-    const html = await fetchText('https://downdetector.com/status/oracle-cloud/');
-    const reportMatch = html.match(/(\d+)\s*reports/i);
-    const reports = reportMatch ? parseInt(reportMatch[1]) : 0;
-
-    let status = 'unknown';
-    if (html.includes('No problems detected') || html.includes('no-current-problems')) {
-      status = 'operational';
-    } else if (html.includes('Problems detected') || html.includes('possible-problems')) {
-      status = 'issues';
+    const result = await fetchXML('https://rssfeed.azure.status.microsoft/en-us/status/feed/');
+    const items = result?.rss?.channel?.[0]?.item || [];
+    const services = {};
+    for (const item of items.slice(0, 5)) {
+      const title = item.title?.[0] || '';
+      const desc = (item.description?.[0] || '').toLowerCase();
+      let status = 'operational';
+      if (desc.includes('critical') || desc.includes('major')) status = 'major_outage';
+      else if (desc.includes('warning') || desc.includes('degraded')) status = 'degraded';
+      else if (desc.includes('information')) status = 'informational';
+      services[`azure_${title}`] = { name: `Azure: ${title}`, status, provider: 'Microsoft Azure' };
     }
-
-    return {
-      reports,
-      status,
-      source: 'DownDetector',
-      fetchedAt: new Date().toISOString()
-    };
-  } catch (err) {
-    console.error('DownDetector fetch failed:', err.message);
-    return null;
-  }
+    return { services };
+  } catch { return { services: {} }; }
 }
 
-// Fetch Oracle RSS feeds
+async function fetchCloudflareStatus() {
+  try {
+    const [summary, components] = await Promise.all([
+      fetchJSON('https://www.cloudflarestatus.com/api/v2/summary.json'),
+      fetchJSON('https://www.cloudflarestatus.com/api/v2/components.json')
+    ]);
+    const services = {};
+    for (const c of (components.components || [])) {
+      services[`cf_${c.name}`] = { name: `Cloudflare: ${c.name}`, status: c.status, provider: 'Cloudflare' };
+    }
+    return { services, status: summary.status?.indicator || 'none' };
+  } catch { return { services: {} }; }
+}
+
+async function fetchAWSStatus() {
+  try {
+    const html = await fetchText('https://health.aws.amazon.com/health/status');
+    const services = {};
+    const statusMatch = html.match(/"overallStatus"\s*:\s*"([^"]+)"/);
+    const overallStatus = statusMatch ? statusMatch[1].toLowerCase() : 'informational';
+    services['aws_overall'] = { name: 'AWS Overall', status: overallStatus === 'informational' ? 'operational' : overallStatus, provider: 'AWS' };
+
+    const rss = await fetchXML('https://status.aws.amazon.com/rss/all.rss');
+    const items = rss?.rss?.channel?.[0]?.item || [];
+    for (const item of items.slice(0, 5)) {
+      const title = item.title?.[0] || '';
+      const desc = (item.description?.[0] || '').toLowerCase();
+      let st = 'operational';
+      if (desc.includes('outage') || desc.includes('impaired')) st = 'degraded';
+      else if (desc.includes('disruption')) st = 'major_outage';
+      services[`aws_${title.substring(0, 50)}`] = { name: `AWS: ${title}`, status: st, provider: 'AWS' };
+    }
+    return { services };
+  } catch { return { services: {} }; }
+}
+
+async function fetchM365Status() {
+  try {
+    const result = await fetchXML('https://status.cloud.microsoft/api/v2/managedRSS');
+    const items = result?.rss?.channel?.[0]?.item || [];
+    const services = {};
+    for (const item of items.slice(0, 3)) {
+      const title = item.title?.[0] || '';
+      const desc = (item.description?.[0] || '').toLowerCase();
+      let st = 'operational';
+      if (desc.includes('major') || desc.includes('critical')) st = 'major_outage';
+      else if (desc.includes('degraded') || desc.includes('issue')) st = 'degraded';
+      services[`m365_${title.substring(0, 50)}`] = { name: `M365: ${title}`, status: st, provider: 'Microsoft 365' };
+    }
+    return { services };
+  } catch { return { services: {} }; }
+}
+
+async function fetchDownDetectorServices() {
+  const services = [
+    { name: 'Oracle Cloud', slug: 'oracle-cloud' },
+    { name: 'Oracle Hospitality/Opera', slug: 'oracle-hospitality' },
+    { name: 'AWS', slug: 'amazon-web-services-aws' },
+    { name: 'Azure', slug: 'microsoft-azure' },
+    { name: 'Cloudflare', slug: 'cloudflare' },
+    { name: 'Microsoft 365', slug: 'microsoft-office-365' },
+    { name: 'ServiceNow', slug: 'servicenow' },
+  ];
+  const results = [];
+
+  for (const svc of services) {
+    try {
+      const html = await fetchText(`https://downdetector.com/status/${svc.slug}/`);
+      const reportMatch = html.match(/(\d[\d,]*)\s*(?:reports|problems)/i);
+      const reports = reportMatch ? parseInt(reportMatch[1].replace(/,/g, '')) : 0;
+      let status = 'operational';
+      if (html.includes('Problems detected') || html.includes('problems-detected')) status = 'issues';
+      else if (html.includes('Possible problems') || html.includes('possible-problems')) status = 'possible_issues';
+      results.push({ name: svc.name, reports, status, source: 'DownDetector' });
+    } catch { results.push({ name: svc.name, reports: 0, status: 'unknown', source: 'DownDetector' }); }
+  }
+  return results;
+}
+
 async function fetchOracleRSS() {
   const feeds = [
-    'https://www.oracle.com/rss/feeds/cloud-news.xml',
-    'https://blogs.oracle.com/cloud-infrastructure/rss'
+    { url: 'https://www.oracle.com/rss/feeds/cloud-news.xml', source: 'Oracle Cloud News' },
+    { url: 'https://ocistatus.oraclecloud.com/api/v2/incident-summary.rss', source: 'OCI Incidents' },
+    { url: 'https://www.oracle.com/rss/feeds/hospitality-news.xml', source: 'Oracle Hospitality' },
   ];
   const allItems = [];
-
   for (const feed of feeds) {
     try {
-      const result = await fetchXML(feed);
+      const result = await fetchXML(feed.url);
       const items = result?.rss?.channel?.[0]?.item || [];
       allItems.push(...items.slice(0, 10).map(item => ({
         title: item.title?.[0] || '',
-        description: item.description?.[0] || '',
+        description: (item.description?.[0] || '').replace(/<[^>]*>/g, '').substring(0, 300),
         link: item.link?.[0] || '',
         pubDate: item.pubDate?.[0] || '',
-        source: 'Oracle News'
+        source: feed.source
       })));
-    } catch (err) {
-      console.error(`RSS feed ${feed} failed:`, err.message);
-    }
+    } catch {}
   }
-
-  // Also fetch OCI incident history RSS
-  try {
-    const result = await fetchXML('https://ocistatus.oraclecloud.com/api/v2/incident-summary.rss');
-    const items = result?.rss?.channel?.[0]?.item || [];
-    allItems.push(...items.slice(0, 10).map(item => ({
-      title: item.title?.[0] || '',
-      description: item.description?.[0] || '',
-      link: item.link?.[0] || '',
-      pubDate: item.pubDate?.[0] || '',
-      source: 'OCI Incidents'
-    })));
-  } catch (err) {
-    console.error('OCI RSS failed:', err.message);
-  }
-
-  return allItems.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+  return allItems.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate)).slice(0, 30);
 }
 
-// Check additional Oracle service endpoints
-async function checkAdditionalEndpoints() {
+async function checkEndpoints() {
   const endpoints = [
-    { name: 'Oracle Cloud Infrastructure', url: 'https://ocistatus.oraclecloud.com/api/v2/status.json' },
-    { name: 'Oracle Hospitality (OPERA)', url: 'https://www.oracle.com/hospitality/' },
-    { name: 'Oracle Java', url: 'https://www.oracle.com/java/' },
+    { name: 'Oracle OCI Status', url: 'https://ocistatus.oraclecloud.com/api/v2/status.json' },
+    { name: 'Oracle Hospitality', url: 'https://www.oracle.com/hospitality/' },
+    { name: 'Azure Status', url: 'https://azure.status.microsoft/' },
+    { name: 'AWS Status', url: 'https://health.aws.amazon.com/health/status' },
+    { name: 'Cloudflare Status', url: 'https://www.cloudflarestatus.com/api/v2/status.json' },
+    { name: 'Microsoft 365', url: 'https://status.cloud.microsoft/' },
+    { name: 'DownDetector Oracle', url: 'https://downdetector.com/status/oracle-cloud/' },
   ];
-
   const results = [];
   for (const ep of endpoints) {
     try {
@@ -191,69 +275,58 @@ async function checkAdditionalEndpoints() {
   return results;
 }
 
-// Master refresh function
 async function refreshAllData() {
-  console.log('Refreshing dashboard data...');
+  console.log('Refreshing all data...');
   try {
-    const [oci, incidents, downdetector, rss, endpoints] = await Promise.all([
-      fetchOCIStatus(),
-      fetchOCIIncidents(),
-      fetchDownDetector(),
-      fetchOracleRSS(),
-      checkAdditionalEndpoints()
+    const previousState = loadPreviousState();
+    const newState = {};
+
+    const [oci, azure, cloudflare, aws, m365, incidents, dd, rss, endpoints] = await Promise.all([
+      fetchOCI(), fetchAzureStatus(), fetchCloudflareStatus(), fetchAWSStatus(), fetchM365Status(),
+      fetchOCIRSS(), fetchDownDetectorServices(), fetchOracleRSS(), checkEndpoints()
     ]);
 
+    Object.assign(newState, oci.services, azure.services, cloudflare.services, aws.services, m365.services);
+    for (const d of dd) { newState[`dd_${d.name}`] = { name: d.name, status: d.status, provider: 'DownDetector' }; }
+
+    const changes = detectChanges(previousState, newState);
+    saveCurrentState(newState);
+
     statusCache = {
-      oci,
+      services: newState,
+      providers: {
+        oci: { status: oci.status, description: oci.description },
+        azure: { status: azure.services && Object.keys(azure.services).length ? 'checked' : 'unknown' },
+        cloudflare: { status: cloudflare.status || 'unknown' },
+        aws: { status: aws.services && Object.keys(aws.services).length ? 'checked' : 'unknown' },
+        m365: { status: m365.services && Object.keys(m365.services).length ? 'checked' : 'unknown' },
+      },
       incidents,
-      downdetector,
+      downdetector: dd,
       rss,
       endpoints,
+      changes: [...changes, ...statusCache.changes].slice(0, 50),
       lastUpdated: new Date().toISOString()
     };
 
-    console.log('Dashboard data refreshed at', statusCache.lastUpdated);
-  } catch (err) {
-    console.error('Refresh failed:', err.message);
-  }
+    if (changes.length > 0) console.log(`Detected ${changes.length} changes:`, changes.map(c => c.message));
+    else console.log('Data refreshed, no status changes.');
+  } catch (err) { console.error('Refresh failed:', err.message); }
 }
 
-// API routes
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
 
-app.get('/api/status', (req, res) => {
-  res.json(statusCache);
-});
+app.get('/api/status', (req, res) => res.json(statusCache));
+app.get('/api/services', (req, res) => res.json(statusCache.services || {}));
+app.get('/api/incidents', (req, res) => res.json(statusCache.incidents || []));
+app.get('/api/downdetector', (req, res) => res.json(statusCache.downdetector || []));
+app.get('/api/rss', (req, res) => res.json(statusCache.rss || []));
+app.get('/api/changes', (req, res) => res.json(statusCache.changes || []));
+app.get('/api/refresh', async (req, res) => { await refreshAllData(); res.json({ ok: true, lastUpdated: statusCache.lastUpdated }); });
+app.get('/api/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime(), lastUpdated: statusCache.lastUpdated }));
 
-app.get('/api/oci', (req, res) => {
-  res.json(statusCache.oci || { error: 'Not yet loaded' });
-});
-
-app.get('/api/incidents', (req, res) => {
-  res.json(statusCache.incidents || []);
-});
-
-app.get('/api/downdetector', (req, res) => {
-  res.json(statusCache.downdetector || { error: 'Not yet loaded' });
-});
-
-app.get('/api/rss', (req, res) => {
-  res.json(statusCache.rss || []);
-});
-
-app.get('/api/refresh', async (req, res) => {
-  await refreshAllData();
-  res.json({ success: true, lastUpdated: statusCache.lastUpdated });
-});
-
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', uptime: process.uptime() });
-});
-
-// Initial load and cron schedule
 refreshAllData();
-cron.schedule('*/3 * * * *', refreshAllData); // Every 3 minutes
+cron.schedule('*/2 * * * *', refreshAllData);
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Oracle Status Dashboard running on port ${PORT}`);
-});
+app.listen(PORT, '0.0.0.0', () => console.log(`Oracle Status Dashboard running on port ${PORT}`));
