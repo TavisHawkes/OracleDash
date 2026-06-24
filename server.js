@@ -609,12 +609,13 @@ async function refreshAllData() {
     const newState = {};
 
     const [oci, azure, cloudflare, aws, m365, gcp, doStatus, fastly, akamai, veeam, cw, kaseya, datto, agilysys,
-           incidents, dd, rss, endpoints] = await Promise.all([
+           dd, rss, endpoints] = await Promise.all([
       fetchOCI(), fetchAzureStatus(), fetchCloudflareStatus(), fetchAWSStatus(), fetchM365Status(),
       fetchGCPStatus(), fetchDigitalOceanStatus(), fetchFastlyStatus(), fetchAkamaiStatus(),
       fetchVeeamStatus(), fetchConnectWiseStatus(), fetchKaseyaStatus(), fetchDattoStatus(), fetchAgilysysStatus(),
-      fetchOCIRSS(), fetchDownDetectorServices(), fetchOracleRSS(), checkEndpoints()
+      fetchDownDetectorServices(), fetchOracleRSS(), checkEndpoints()
     ]);
+    const incidents = rss;
 
     Object.assign(newState, oci.services, azure.services, cloudflare.services, aws.services, m365.services,
       gcp.services, doStatus.services, fastly.services, akamai.services,
