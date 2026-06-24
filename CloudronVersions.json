@@ -1,0 +1,11 @@
+[{
+  "version": "1.0.0",
+  "manifestVersion": 2,
+  "id": "com.oracle-status-dashboard",
+  "description": "Monitor Oracle Cloud Infrastructure status, detect outages, and view RSS feeds",
+  "author": "TavisHawkes",
+  "dockerImage": "ghcr.io/tavishawkes/oracledash:latest",
+  "httpPort": 3000,
+  "healthCheckPath": "/api/health",
+  "addons": {}
+}]
