@@ -508,10 +508,6 @@
         .ringMaxRadius(d => d.radius || 5)
         .ringPropagationSpeed(d => 2)
         .ringRepeatPeriod(d => 1200)
-        .ringLabel(d => `<div style="background:rgba(10,14,26,.92);padding:8px 12px;border-radius:6px;border:1px solid #2a3454;font-size:12px;max-width:280px">
-          <div style="font-weight:600;margin-bottom:2px">${d.label || 'Unknown'}</div>
-          <div style="color:#ff0040">Hotspot: ${d.weight || 1}/4</div>
-        </div>`)
         .arcsData([])
         .arcColor(() => 'rgba(6,182,212,0.3)')
         .arcDashLength(0.4)
