@@ -5,10 +5,10 @@
       "manifest": {
         "manifestVersion": 2,
         "id": "com.tavishawkes.oracle-status-dashboard",
-        "title": "Oracle Status Dashboard",
+        "title": "Infrastructure Dashboard",
         "author": "TavisHawkes",
-        "description": "Monitor Oracle Cloud Infrastructure status, detect outages, and view RSS feeds",
-        "tagline": "Real-time OCI monitoring with RSS feeds and outage alerts",
+        "description": "Monitor cloud, ITSM, hospitality, payment and critical infrastructure status with real-time outage alerts",
+        "tagline": "Real-time infrastructure monitoring with outage alerts and geo mapping",
         "changelog": "Initial release",
         "minBoxVersion": "7.0.0",
         "version": "1.0.0",

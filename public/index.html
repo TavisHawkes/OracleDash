@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Oracle Status Dashboard</title>
+  <title>Infrastructure Dashboard</title>
   <script src="https://unpkg.com/globe.gl@2.35.1/dist/globe.gl.min.js"></script>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
@@ -111,7 +111,7 @@
     <div class="header-left">
       <div class="logo">OCI</div>
       <div>
-        <h1>Oracle Status Dashboard</h1>
+        <h1>Infrastructure Dashboard</h1>
         <div style="font-size:11px;color:var(--t3)">ITSM Hospitality Monitor &bull; <span id="lastUpdated">Loading...</span></div>
       </div>
     </div>
@@ -250,7 +250,7 @@
       bar.className = `notif-bar show ${severity === 'critical' || severity === 'new_issue' ? 'critical' : 'warn'}`;
       playAlert(severity);
       if (Notification.permission === 'granted') {
-        new Notification('Oracle Status Dashboard', { body: msg, icon: '/favicon.ico' });
+        new Notification('Infrastructure Dashboard', { body: msg, icon: '/favicon.ico' });
       }
     }
 
@@ -386,7 +386,7 @@
         const dotColor = t.source === 'Oracle OCI' ? 'var(--red)' : 'var(--cyan)';
         return `<div class="ticker-item"><div class="ticker-dot" style="background:${dotColor}"></div>${t.title || t.description || ''}</div>`;
       }).join('');
-      document.getElementById('ticker').innerHTML = tickerHtml + tickerHtml || '<div class="ticker-item">Oracle Status Dashboard - Monitoring all providers</div>';
+      document.getElementById('ticker').innerHTML = tickerHtml + tickerHtml || '<div class="ticker-item">Infrastructure Dashboard - Monitoring all providers</div>';
 
       // Last updated
       if (data.lastUpdated) document.getElementById('lastUpdated').textContent = new Date(data.lastUpdated).toLocaleString();
